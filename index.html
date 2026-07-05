@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#1a120b" />
+<title>mybio — one link for everything you are</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,500;0,600;0,700;1,500&family=Courier+Prime:wght@400;700&display=swap"
+  rel="stylesheet"
+/>
+<script src="https://accounts.google.com/gsi/client" async></script>
+
+<style>
+  :root {
+    /* vintage detective-office brown, night mode */
+    --bg: #1a120b;
+    --bg-soft: #241a10;
+    --text: #f2e3c9;
+    --text-dim: #b89a72;
+    --accent: #e8a33d;      /* incandescent bulb yellow */
+    --accent-2: #a85c32;    /* rust / worn leather */
+    --accent-3: #6f4a2e;    /* dark wood */
+    --border: rgba(242, 227, 201, 0.14);
+    --vignette: rgba(0, 0, 0, 0.55);
+    --radius-pill: 4px;
+    --font-display: "Bodoni Moda", serif;
+    --font-body: "Courier Prime", ui-monospace, monospace;
+    --transition: 220ms ease;
+  }
+
+  [data-theme="light"] {
+    /* aged paper / sepia photograph, day mode */
+    --bg: #ede1c9;
+    --bg-soft: #e2d3af;
+    --text: #3a2a18;
+    --text-dim: #7a5f3f;
+    --accent: #b5651d;
+    --accent-2: #8a4a2a;
+    --accent-3: #cbb586;
+    --border: rgba(58, 42, 24, 0.16);
+    --vignette: rgba(58, 42, 24, 0.18);
+  }
+
+  * { box-sizing: border-box; }
+  html, body, #app { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    transition: background var(--transition), color var(--transition);
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+  }
+  a { color: inherit; }
+
+  /* subtle paper grain + vignette — pure CSS, no image assets, cheap to render */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: radial-gradient(rgba(0, 0, 0, 0.5) 1px, transparent 1px);
+    background-size: 3px 3px;
+    opacity: 0.06;
+    pointer-events: none;
+    z-index: 4;
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 30%, transparent 40%, var(--vignette) 100%);
+    pointer-events: none;
+    z-index: 4;
+    transition: background var(--transition);
+  }
+
+  .page { position: relative; min-height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ---------- the hanging detective lamp: the one signature element ----------
+     .lamp-anchor centers the whole rig horizontally at the ceiling.
+     .lamp-rig is the part that rotates — transform-origin sits at its top,
+     so it swings like it's actually hanging from that point. */
+  .lamp-anchor {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    width: 0;
+    height: 0;
+  }
+  .lamp-rig {
+    position: relative;
+    transform-origin: top center;
+    transform: rotate(0deg);
+    will-change: transform;
+  }
+  .lamp-hit {
+    position: absolute;
+    top: 30px;
+    left: -30px;
+    width: 60px;
+    height: 66px;
+    border-radius: 50%;
+    cursor: grab;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    z-index: 4;
+  }
+  .lamp-hit.dragging { cursor: grabbing; }
+  .lamp-cord {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translateX(-50%);
+    width: 2px;
+    height: 64px;
+    background: linear-gradient(to bottom, transparent, var(--text-dim));
+    opacity: 0.6;
+  }
+  .lamp-bulb {
+    position: absolute;
+    top: 60px;
+    left: 0;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 16px;
+    border-radius: 50% 50% 45% 45%;
+    background: var(--accent);
+    box-shadow: 0 0 24px 8px var(--accent);
+    transition: opacity 50ms linear, box-shadow 50ms linear;
+  }
+  .lamp-glow {
+    position: absolute;
+    top: 68px;
+    left: 0;
+    transform: translate(-50%, -50%);
+    width: 480px;
+    height: 480px;
+    max-width: 150vw;
+    max-height: 150vw;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, var(--accent) 0%, transparent 68%);
+    opacity: 0.3;
+    pointer-events: none;
+    transition: opacity 50ms linear;
+  }
+  body.flicker .lamp-bulb { opacity: 0.12; box-shadow: none; }
+  body.flicker .lamp-glow { opacity: 0.04; }
+
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 24px 32px; position: relative; z-index: 2; }
+  .wordmark { font-family: var(--font-display); font-weight: 600; font-size: 20px; letter-spacing: 0.3px; }
+  .topbar-actions { display: flex; align-items: center; gap: 12px; }
+
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 1px solid var(--border); background: var(--bg-soft); color: var(--text);
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: transform var(--transition), background var(--transition);
+  }
+  .icon-btn:hover { transform: translateY(-2px); }
+  .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .pill {
+    font-family: var(--font-body); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px;
+    padding: 11px 22px; border-radius: var(--radius-pill); text-decoration: none;
+    display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent;
+    cursor: pointer; transition: transform var(--transition), background var(--transition), box-shadow var(--transition), color var(--transition);
+  }
+  .pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .pill-ghost { color: var(--text-dim); border-color: var(--border); background: transparent; }
+  .pill-ghost:hover { color: var(--text); border-color: var(--accent); }
+
+  .pill-solid { background: var(--accent); color: #1a120b; box-shadow: 0 8px 20px -8px var(--accent); }
+  .pill-solid:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -8px var(--accent); }
+
+  .pill-outline { border-color: var(--accent-2); color: var(--text); background: transparent; }
+  .pill-outline:hover { background: var(--accent-2); color: var(--text); border-color: var(--accent-2); }
+
+  .hero {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px 20px; position: relative; z-index: 2;
+  }
+  .eyebrow { font-family: var(--font-body); font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 18px; }
+  .title { font-family: var(--font-display); font-weight: 600; font-size: clamp(52px, 11vw, 104px); margin: 0; line-height: 1; animation: pop-in 500ms cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+  .subtitle { max-width: 440px; color: var(--text-dim); font-size: 15px; line-height: 1.7; margin: 22px 0 38px; }
+  .cta-row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+
+  @keyframes pop-in { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: none; } }
+
+  .footer { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 20px; font-size: 12px; color: var(--text-dim); position: relative; z-index: 2; }
+  .footer a { color: var(--accent); text-decoration: none; font-weight: 700; }
+  .footer a:hover { text-decoration: underline; }
+  .dot { opacity: 0.5; }
+
+  .user-chip { display: flex; align-items: center; gap: 10px; }
+  .user-avatar { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); display: block; }
+  .user-name { font-size: 12px; color: var(--text-dim); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  @media (prefers-reduced-motion: reduce) { .title { animation: none; } }
+
+  .stub { align-items: center; justify-content: center; text-align: center; gap: 8px; }
+  .stub-back { position: absolute; top: 24px; left: 32px; }
+  .stub h2 { font-family: var(--font-display); font-size: 32px; margin: 0; }
+
+  @media (max-width: 480px) {
+    .topbar { padding: 18px 20px; }
+    .pill { font-size: 12px; padding: 10px 16px; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SUN_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8l1.8-1.8M18 6l1.8-1.8"/></svg>';
+  var MOON_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>';
+
+  // ---------- theme ----------
+  function getTheme() {
+    return localStorage.getItem("mybio-theme") || "dark";
+  }
+  function setTheme(theme) {
+    localStorage.setItem("mybio-theme", theme);
+    document.documentElement.setAttribute("data-theme", theme);
+  }
+  function toggleTheme() {
+    setTheme(getTheme() === "dark" ? "light" : "dark");
+    render();
+  }
+  document.documentElement.setAttribute("data-theme", getTheme());
+
+  // ---------- tiny router (no library needed) ----------
+  function navigate(path) {
+    history.pushState({}, "", path);
+    render();
+  }
+  window.addEventListener("popstate", render);
+
+  // ---------- flickering detective lamp ----------
+  // Faulty-bulb feel: irregular random dips instead of a clean repeating loop.
+  var audioCtx = null;
+  function initAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+    }
+  }
+  // Browsers block audio until the user interacts with the page at least once —
+  // this just arms the audio context on the first tap/click anywhere.
+  document.addEventListener("click", initAudio, { once: true });
+
+  function playClick() {
+    if (!audioCtx) return;
+    var t = audioCtx.currentTime;
+    var osc = audioCtx.createOscillator();
+    var gain = audioCtx.createGain();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(1400, t);
+    gain.gain.setValueAtTime(0.05, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.04);
+  }
+
+  function scheduleFlicker() {
+    setTimeout(function () {
+      document.body.classList.add("flicker");
+      playClick();
+      var dipMs = 50 + Math.random() * 140;
+      setTimeout(function () {
+        document.body.classList.remove("flicker");
+        playClick();
+        // occasionally double-flicker, like a bad connection
+        if (Math.random() < 0.3) {
+          setTimeout(function () {
+            document.body.classList.add("flicker");
+            playClick();
+            setTimeout(function () {
+              document.body.classList.remove("flicker");
+              playClick();
+            }, 40 + Math.random() * 80);
+          }, 90);
+        }
+      }, dipMs);
+      scheduleFlicker();
+    }, 1500 + Math.random() * 4500);
+  }
+
+  // ---------- lamp: drag it, it swings back like a real pull-cord ----------
+  // Pointer Events (not touch/mouse events separately) so this works the
+  // same on phones, desktop mode, mouse, and stylus with one code path.
+  var lampAngle = 0;
+  var lampVelocity = 0;
+  var lampDragging = false;
+  var lampDragStartX = 0;
+  var lampDragStartAngle = 0;
+  var lampLastX = 0;
+  var lampLastTime = 0;
+  var lampAnimFrame = null;
+  var LAMP_MAX_ANGLE = 55;
+  var LAMP_SPRING_K = 0.02;
+  var LAMP_DAMPING = 0.94;
+
+  function applyLampAngle() {
+    var rig = document.getElementById("lamp-rig");
+    if (rig) rig.style.transform = "rotate(" + lampAngle.toFixed(2) + "deg)";
+  }
+
+  function cancelLampAnimation() {
+    if (lampAnimFrame) {
+      cancelAnimationFrame(lampAnimFrame);
+      lampAnimFrame = null;
+    }
+  }
+
+  function startLampSwing() {
+    cancelLampAnimation();
+    function step() {
+      var accel = -LAMP_SPRING_K * lampAngle;
+      lampVelocity += accel;
+      lampVelocity *= LAMP_DAMPING;
+      lampAngle += lampVelocity;
+      applyLampAngle();
+
+      if (Math.abs(lampAngle) > 0.05 || Math.abs(lampVelocity) > 0.05) {
+        lampAnimFrame = requestAnimationFrame(step);
+      } else {
+        lampAngle = 0;
+        lampVelocity = 0;
+        applyLampAngle();
+        lampAnimFrame = null;
+      }
+    }
+    lampAnimFrame = requestAnimationFrame(step);
+  }
+
+  function attachLampEvents() {
+    var hit = document.getElementById("lamp-hit");
+    if (!hit) return;
+
+    cancelLampAnimation();
+    lampAngle = 0;
+    lampVelocity = 0;
+    applyLampAngle();
+
+    hit.addEventListener("pointerdown", function (e) {
+      lampDragging = true;
+      cancelLampAnimation();
+      hit.classList.add("dragging");
+      lampDragStartX = e.clientX;
+      lampDragStartAngle = lampAngle;
+      lampLastX = e.clientX;
+      lampLastTime = performance.now();
+      lampVelocity = 0;
+      try { hit.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+
+    hit.addEventListener("pointermove", function (e) {
+      if (!lampDragging) return;
+      var dx = e.clientX - lampDragStartX;
+      var newAngle = lampDragStartAngle + dx * 0.35;
+      newAngle = Math.max(-LAMP_MAX_ANGLE, Math.min(LAMP_MAX_ANGLE, newAngle));
+
+      var now = performance.now();
+      var dt = now - lampLastTime || 16.67;
+      lampVelocity = (newAngle - lampAngle) / (dt / 16.67);
+      lampLastTime = now;
+      lampLastX = e.clientX;
+
+      lampAngle = newAngle;
+      applyLampAngle();
+    });
+
+    function endLampDrag(e) {
+      if (!lampDragging) return;
+      lampDragging = false;
+      hit.classList.remove("dragging");
+      try { hit.releasePointerCapture(e.pointerId); } catch (err) {}
+      startLampSwing();
+    }
+
+    hit.addEventListener("pointerup", endLampDrag);
+    hit.addEventListener("pointercancel", endLampDrag);
+  }
+
+  // ---------- Google Sign-In ----------
+  // 1. Go to https://console.cloud.google.com/apis/credentials
+  // 2. Create an OAuth Client ID -> Web application
+  // 3. Add your test origin under "Authorized JavaScript origins",
+  //    e.g. http://localhost:7700 (and later https://mybio.zone.id)
+  // 4. Paste the client ID below.
+  var GOOGLE_CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com";
+
+  var currentUser = null;
+  try {
+    var storedUser = localStorage.getItem("mybio-user");
+    if (storedUser) currentUser = JSON.parse(storedUser);
+  } catch (e) {}
+
+  function escapeHtml(str) {
+    var div = document.createElement("div");
+    div.textContent = str == null ? "" : str;
+    return div.innerHTML;
+  }
+
+  function parseJwt(token) {
+    try {
+      var base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      var jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split("")
+          .map(function (c) {
+            return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+          })
+          .join("")
+      );
+      return JSON.parse(jsonPayload);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // NOTE: decoding the token here just reads the name/email/photo for the UI.
+  // It does NOT prove the token is genuine. Real login needs a backend that
+  // verifies this token's signature against Google's public keys before
+  // trusting it or starting a session — do that before this goes live.
+  function handleGoogleCredential(response) {
+    var payload = parseJwt(response.credential);
+    if (!payload) return;
+    currentUser = { name: payload.name, email: payload.email, picture: payload.picture };
+    localStorage.setItem("mybio-user", JSON.stringify(currentUser));
+    render();
+  }
+
+  function logout() {
+    currentUser = null;
+    localStorage.removeItem("mybio-user");
+    if (window.google && google.accounts && google.accounts.id) {
+      google.accounts.id.disableAutoSelect();
+    }
+    render();
+  }
+
+  function initGoogleSignIn() {
+    var container = document.getElementById("google-signin-btn");
+    if (!container) return; // already logged in — nothing to render
+    if (!window.google || !google.accounts || !google.accounts.id) {
+      setTimeout(initGoogleSignIn, 100); // GSI script still loading, try again shortly
+      return;
+    }
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredential
+    });
+    google.accounts.id.renderButton(container, {
+      theme: "filled_black",
+      size: "medium",
+      shape: "pill",
+      text: "signin"
+    });
+  }
+
+  // ---------- pages ----------
+  function homePage() {
+    var theme = getTheme();
+    return (
+      '<div class="page home">' +
+        '<div class="lamp-anchor" aria-hidden="true">' +
+          '<div class="lamp-rig" id="lamp-rig">' +
+            '<div class="lamp-glow"></div>' +
+            '<div class="lamp-cord"></div>' +
+            '<div class="lamp-bulb"></div>' +
+            '<div class="lamp-hit" id="lamp-hit" title="Pull me"></div>' +
+          '</div>' +
+        '</div>' +
+        '<header class="topbar">' +
+          '<span class="wordmark">mybio</span>' +
+          '<div class="topbar-actions">' +
+            (currentUser
+              ? '<div class="user-chip">' +
+                  '<img src="' + currentUser.picture + '" alt="" class="user-avatar" referrerpolicy="no-referrer" />' +
+                  '<span class="user-name">' + escapeHtml(currentUser.name) + '</span>' +
+                  '<button type="button" class="pill pill-ghost" id="logout-btn">Log out</button>' +
+                '</div>'
+              : '<div id="google-signin-btn"></div>') +
+            '<button type="button" class="icon-btn" id="theme-toggle" aria-label="Toggle theme">' +
+              (theme === "dark" ? SUN_ICON : MOON_ICON) +
+            '</button>' +
+          '</div>' +
+        '</header>' +
+        '<main class="hero">' +
+          '<span class="eyebrow">one link for everything you are</span>' +
+          '<h1 class="title">My Bio!</h1>' +
+          '<p class="subtitle">Build a home for every link, song, and social you&#39;ve got — then share one address.</p>' +
+          '<div class="cta-row">' +
+            '<a href="/create" class="pill pill-solid" data-link>Get your bio started</a>' +
+            '<a href="/search" class="pill pill-outline" data-link>See other bios</a>' +
+          '</div>' +
+        '</main>' +
+        '<footer class="footer">' +
+          '<span>© 2026 Ajaxx</span>' +
+          '<span class="dot">·</span>' +
+          '<a href="https://instagram.com/edd_00z" target="_blank" rel="noreferrer">@edd_00z</a>' +
+        '</footer>' +
+      '</div>'
+    );
+  }
+
+  function stubPage(label) {
+    return (
+      '<div class="page stub">' +
+        '<a href="/" class="pill pill-ghost stub-back" data-link>← Back home</a>' +
+        '<h2>' + label + '</h2>' +
+        '<p>This page isn&#39;t wired up yet — build it next.</p>' +
+      '</div>'
+    );
+  }
+
+  function routeToHtml(path) {
+    if (path === "/") return homePage();
+    if (path === "/search") return stubPage("Search");
+    if (path === "/create") return stubPage("Create");
+    if (path.indexOf("/@") === 0) return stubPage("Profile");
+    return stubPage("Not found");
+  }
+
+  // ---------- render ----------
+  function render() {
+    var app = document.getElementById("app");
+    app.innerHTML = routeToHtml(window.location.pathname);
+
+    var toggleBtn = document.getElementById("theme-toggle");
+    if (toggleBtn) toggleBtn.addEventListener("click", toggleTheme);
+
+    var logoutBtn = document.getElementById("logout-btn");
+    if (logoutBtn) logoutBtn.addEventListener("click", logout);
+
+    initGoogleSignIn();
+    attachLampEvents();
+  }
+
+  document.addEventListener("click", function (e) {
+    var link = e.target.closest("[data-link]");
+    if (link) {
+      e.preventDefault();
+      navigate(link.getAttribute("href"));
+    }
+  });
+
+  render();
+  scheduleFlicker();
+})();
+</script>
+</body>
+</html>
