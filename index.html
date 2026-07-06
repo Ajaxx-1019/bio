@@ -816,10 +816,15 @@
   }
 
   function signInWithGoogle() {
-    debugLog("Sign-in button tapped. Starting redirect to Google...");
+    debugLog("Sign-in button tapped. Trying popup sign-in...");
     var provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithRedirect(provider).catch(function (err) {
-      debugLog("signInWithRedirect threw: " + (err && err.code) + " " + (err && err.message));
+    auth.signInWithPopup(provider).then(function (result) {
+      debugLog("Popup sign-in OK: " + (result && result.user ? result.user.email : "?"));
+    }).catch(function (err) {
+      debugLog("Popup sign-in failed: " + (err && err.code) + " " + (err && err.message) + " — trying redirect instead...");
+      auth.signInWithRedirect(provider).catch(function (err2) {
+        debugLog("Redirect fallback also failed: " + (err2 && err2.code) + " " + (err2 && err2.message));
+      });
     });
   }
 
