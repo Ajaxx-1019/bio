@@ -9,10 +9,20 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link
-  href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,500;0,600;0,700;1,500&family=Courier+Prime:wght@400;700&display=swap"
+  href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,500;0,600;0,700;1,500&family=Courier+Prime:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
   rel="stylesheet"
 />
-<script src="https://accounts.google.com/gsi/client" async></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore-compat.js"></script>
+
+<!-- Real "no address bar at all" only exists once this is installed as an app
+     (Add to Home Screen) — a website can't force that in a normal browser tab,
+     that's a deliberate browser security rule, not something code can bypass. -->
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjogIm15YmlvIiwgInNob3J0X25hbWUiOiAibXliaW8iLCAic3RhcnRfdXJsIjogIi4iLCAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwgImJhY2tncm91bmRfY29sb3IiOiAiIzFhMTIwYiIsICJ0aGVtZV9jb2xvciI6ICIjMWExMjBiIn0=" />
 
 <style>
   :root {
@@ -46,6 +56,19 @@
   }
 
   * { box-sizing: border-box; }
+
+  /* anti-copy: dampens casual copying (no blue selection box, no long-press
+     save/callout menu, no right-click). This is NOT real DRM — view-source
+     and devtools can still get around anything done purely in the browser —
+     but it removes the easy, accidental ways people copy stuff. */
+  *:not(input):not(textarea) {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input, textarea { -webkit-user-select: text; user-select: text; }
+  img { -webkit-user-drag: none; user-drag: none; }
+
   html, body, #app { height: 100%; }
   body {
     margin: 0;
@@ -204,11 +227,155 @@
   .user-avatar { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); display: block; }
   .user-name { font-size: 12px; color: var(--text-dim); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  .admin-fab {
+    position: fixed; bottom: 20px; right: 20px; width: 48px; height: 48px; border-radius: 50%;
+    border: 1px solid var(--border); background: var(--bg-soft); color: var(--text); font-size: 20px;
+    cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center;
+    transition: transform var(--transition);
+  }
+  .admin-fab:hover { transform: translateY(-2px); }
+  .admin-overlay {
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 30;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .admin-sheet {
+    background: var(--bg-soft); border-radius: 20px 20px 0 0; width: 100%; max-width: 480px;
+    padding: 16px 18px 24px; font-family: var(--font-body); border-top: 1px solid var(--border);
+  }
+  .admin-sheet-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;
+    text-transform: uppercase; font-size: 12px; letter-spacing: 1px; color: var(--accent); font-weight: 700;
+  }
+  .admin-sheet h3 { font-family: var(--font-display); margin: 0 0 12px; font-size: 20px; }
+  .admin-option {
+    display: block; width: 100%; text-align: left; padding: 14px 12px; margin-bottom: 8px; border-radius: 10px;
+    border: 1px solid var(--border); background: transparent; color: var(--text); font-family: inherit;
+    font-size: 14px; cursor: pointer;
+  }
+  .admin-option:hover { border-color: var(--accent); }
+  .admin-option:disabled { opacity: 0.45; cursor: default; }
+  .admin-soon { float: right; font-size: 10px; color: var(--text-dim); text-transform: uppercase; }
+  .admin-note { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+
   @media (prefers-reduced-motion: reduce) { .title { animation: none; } }
 
   .stub { align-items: center; justify-content: center; text-align: center; gap: 8px; }
   .stub-back { position: absolute; top: 24px; left: 32px; }
   .stub h2 { font-family: var(--font-display); font-size: 32px; margin: 0; }
+
+  /* ---------- Create / Profile: deliberately different from the home page —
+     plain white, a distinct clean sans, no lamp/vintage theme here ---------- */
+  .page.create {
+    background: #ffffff;
+    color: #14141a;
+    font-family: "Plus Jakarta Sans", sans-serif;
+    min-height: 100vh;
+  }
+  .page.create .create-topbar { border-bottom: 1px solid #ececef; padding: 16px 20px; }
+  .page.create .create-topbar .icon-btn {
+    background: #f3f3f5; border-color: #ececef; color: #14141a; text-decoration: none; font-size: 18px;
+  }
+  .page.create .create-title { font-weight: 700; font-size: 15px; }
+  .page.create .pill-solid { background: #5b4fe8; color: #fff; box-shadow: none; }
+  .page.create .pill-solid:hover { background: #4a3fd1; transform: none; box-shadow: none; }
+
+  .create-body { padding: 24px 20px 100px; max-width: 560px; margin: 0 auto; width: 100%; }
+
+  .field-group { margin-bottom: 22px; }
+  .field-group label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #45454f; }
+  .field-group input[type="text"], .field-group textarea {
+    width: 100%; border: 1px solid #e2e2e7; border-radius: 12px; padding: 12px 14px;
+    font-family: inherit; font-size: 14px; color: #14141a; background: #fafafb;
+    transition: border-color 160ms ease;
+  }
+  .field-group input[type="text"]:focus, .field-group textarea:focus { outline: none; border-color: #5b4fe8; background: #fff; }
+  .field-group textarea { min-height: 84px; resize: vertical; }
+  .username-field { display: flex; align-items: center; border: 1px solid #e2e2e7; border-radius: 12px; background: #fafafb; padding: 0 14px; }
+  .username-field .at-sign { color: #9a9aa5; font-weight: 700; }
+  .username-field input { border: none; background: transparent; padding: 12px 4px; flex: 1; }
+  .username-field input:focus { outline: none; }
+  .field-hint { font-size: 12px; color: #9a9aa5; margin: 6px 2px 0; }
+  .field-hint-error { color: #d1435b; }
+
+  .section-divider {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 28px 0 12px; font-size: 12px; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; color: #9a9aa5;
+  }
+  .add-btn {
+    width: 28px; height: 28px; border-radius: 50%; border: none; background: #5b4fe8; color: #fff;
+    font-size: 16px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .empty-hint { color: #9a9aa5; font-size: 13px; text-align: center; padding: 24px 0; }
+
+  .item-row { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 1px solid #ececef; border-radius: 14px; margin-bottom: 10px; background: #fff; }
+  .item-icon-btn { width: 44px; height: 44px; border-radius: 12px; background: #f3f3f5; border: 1px dashed #d8d8de; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; flex-shrink: 0; }
+  .item-icon-preview { width: 100%; height: 100%; object-fit: cover; }
+  .item-icon-placeholder { color: #9a9aa5; font-size: 18px; }
+  .item-fields { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .item-fields input[type="text"] { border: 1px solid #ececef; border-radius: 10px; padding: 9px 12px; font-size: 13px; font-family: inherit; background: #fafafb; }
+  .item-fields input[type="text"]:focus { outline: none; border-color: #5b4fe8; background: #fff; }
+  .item-extra { display: flex; flex-direction: column; gap: 6px; }
+  .file-btn { font-size: 12px; color: #5b4fe8; font-weight: 700; cursor: pointer; align-self: flex-start; }
+  .item-audio { width: 100%; height: 32px; }
+  .item-controls { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+  .icon-btn.small { width: 28px; height: 28px; font-size: 13px; background: #f3f3f5; border-color: #ececef; color: #45454f; }
+  .icon-btn.small:disabled { opacity: 0.3; cursor: default; }
+  .icon-btn.small.danger { color: #d1435b; }
+
+  .type-picker {
+    position: fixed; inset: 0; background: rgba(20, 20, 26, 0.4); z-index: 20;
+    display: flex; align-items: flex-end; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 200ms ease;
+  }
+  .type-picker.open { opacity: 1; pointer-events: auto; }
+  .type-picker-sheet {
+    background: #fff; border-radius: 20px 20px 0 0; width: 100%; max-width: 560px;
+    padding: 8px 12px 20px; transform: translateY(16px); transition: transform 200ms ease;
+  }
+  .type-picker.open .type-picker-sheet { transform: translateY(0); }
+  .type-picker-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 8px; font-weight: 700; }
+  .type-option { display: block; width: 100%; text-align: left; padding: 14px 12px; border: none; background: none; font-family: inherit; font-size: 14px; color: #14141a; border-radius: 12px; cursor: pointer; }
+  .type-option:hover { background: #f3f3f5; }
+
+  .cover-upload {
+    display: flex; align-items: center; justify-content: center; height: 120px; border-radius: 14px;
+    background: #f3f3f5 center/cover no-repeat; border: 1px dashed #d8d8de; cursor: pointer;
+    color: #9a9aa5; font-size: 13px; font-weight: 600; overflow: hidden;
+  }
+  .cover-upload.uploading { opacity: 0.5; }
+  .avatar-upload {
+    width: 72px; height: 72px; border-radius: 50%; background: #f3f3f5; border: 1px dashed #d8d8de;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; font-size: 26px;
+  }
+  .avatar-upload.uploading { opacity: 0.5; }
+  .avatar-upload img, .cover-upload img { width: 100%; height: 100%; object-fit: cover; }
+
+  .admin-account-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 4px; border-bottom: 1px solid var(--border);
+  }
+  .admin-account-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .admin-account-name { font-size: 13px; font-weight: 700; }
+  .admin-account-meta { font-size: 11px; color: var(--text-dim); }
+  .small-pill { padding: 6px 12px; font-size: 11px; flex-shrink: 0; }
+
+  .profile-cover { height: 160px; width: 100%; }
+  .profile-body { padding-top: 0; }
+  .profile-avatar-row { margin-top: -36px; margin-bottom: 12px; }
+  .profile-avatar { width: 72px; height: 72px; border-radius: 50%; border: 4px solid #fff; object-fit: cover; display: block; background: #f3f3f5; }
+  .profile-avatar-placeholder { display: flex; align-items: center; justify-content: center; font-size: 28px; }
+  .profile-name { font-size: 20px; font-weight: 800; margin: 0 0 2px; }
+  .profile-username { color: #9a9aa5; font-size: 13px; margin: 0 0 12px; }
+  .profile-bio { font-size: 14px; line-height: 1.6; margin: 0 0 8px; }
+  .profile-divider { margin-top: 24px; }
+  .profile-item { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #ececef; border-radius: 14px; margin-bottom: 8px; }
+  .profile-item-link { text-decoration: none; color: inherit; }
+  .profile-item-link-inner { display: flex; align-items: center; gap: 12px; flex: 1; text-decoration: none; color: inherit; min-width: 0; }
+  .profile-item-icon { width: 36px; height: 36px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: #f3f3f5; }
+  .profile-item-label { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .profile-item-empty { font-size: 12px; color: #9a9aa5; }
+  .profile-item-body { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 
   @media (max-width: 480px) {
     .topbar { padding: 18px 20px; }
@@ -222,6 +389,27 @@
 <script>
 (function () {
   "use strict";
+
+  // ---------- anti-copy ----------
+  // Blocks the easy paths (right-click menu, Ctrl+C, image drag-out).
+  // Doesn't stop devtools/view-source — nothing client-side can.
+  document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  document.addEventListener("copy", function (e) { e.preventDefault(); });
+  document.addEventListener("cut", function (e) { e.preventDefault(); });
+  document.addEventListener("dragstart", function (e) { e.preventDefault(); });
+
+  // ---------- fullscreen on first interaction ----------
+  // Browsers require a real user gesture before granting fullscreen, and
+  // won't allow a page to hide its own address bar without one — this just
+  // asks as soon as that gesture happens. iOS Safari doesn't support the
+  // Fullscreen API for regular pages at all (Apple's limitation, not fixable
+  // from here) — installing via "Add to Home Screen" is the reliable route
+  // there, using the manifest already added to <head>.
+  document.addEventListener("click", function () {
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(function () {});
+    }
+  }, { once: true });
 
   var SUN_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8l1.8-1.8M18 6l1.8-1.8"/></svg>';
   var MOON_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></svg>';
@@ -394,19 +582,36 @@
     hit.addEventListener("pointercancel", endLampDrag);
   }
 
-  // ---------- Google Sign-In ----------
-  // 1. Go to https://console.cloud.google.com/apis/credentials
-  // 2. Create an OAuth Client ID -> Web application
-  // 3. Add your test origin under "Authorized JavaScript origins",
-  //    e.g. http://localhost:7700 (and later https://mybio.zone.id)
-  // 4. Paste the client ID below.
-  var GOOGLE_CLIENT_ID = "928503549873-3qlhebb5rhrr38hvdo918kskcepu59oe.apps.googleusercontent.com";
+  // ---------- Firebase (Auth + Firestore) ----------
+  var firebaseConfig = {
+    apiKey: "AIzaSyDgWfFPZ4Daah8jhnu0ZbQTbv5V_KZDM1Y",
+    authDomain: "ajaxxbio-zoneid.firebaseapp.com",
+    projectId: "ajaxxbio-zoneid",
+    storageBucket: "ajaxxbio-zoneid.firebasestorage.app",
+    messagingSenderId: "336840258366",
+    appId: "1:336840258366:web:4ee745d77aeb357eaef26f",
+    measurementId: "G-PF2XV8MHFB"
+  };
+  firebase.initializeApp(firebaseConfig);
+  var auth = firebase.auth();
+  var db = firebase.firestore();
 
-  var currentUser = null;
-  try {
-    var storedUser = localStorage.getItem("mybio-user");
-    if (storedUser) currentUser = JSON.parse(storedUser);
-  } catch (e) {}
+  // ---------- Cloudinary (unsigned upload) ----------
+  // The "AjaxxBio" preset must have Signing Mode set to "Unsigned" in the
+  // Cloudinary console (Settings -> Upload -> Upload presets), or every
+  // upload here will fail with a 401 — there's no backend here to sign requests.
+  var CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/l4oxgqqj/auto/upload";
+  var CLOUDINARY_UPLOAD_PRESET = "AjaxxBio";
+
+  function uploadToCloudinary(file, cb) {
+    var formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    fetch(CLOUDINARY_URL, { method: "POST", body: formData })
+      .then(function (res) { return res.json(); })
+      .then(function (data) { cb(data.secure_url || null, data); })
+      .catch(function (err) { cb(null, err); });
+  }
 
   function escapeHtml(str) {
     var div = document.createElement("div");
@@ -414,61 +619,577 @@
     return div.innerHTML;
   }
 
-  function parseJwt(token) {
-    try {
-      var base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-      var jsonPayload = decodeURIComponent(
-        atob(base64)
-          .split("")
-          .map(function (c) {
-            return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
-          })
-          .join("")
-      );
-      return JSON.parse(jsonPayload);
-    } catch (e) {
-      return null;
-    }
-  }
+  // { uid, name, email, picture } — set by Firebase itself, never hand-decoded
+  var currentUser = null;
 
-  // NOTE: decoding the token here just reads the name/email/photo for the UI.
-  // It does NOT prove the token is genuine. Real login needs a backend that
-  // verifies this token's signature against Google's public keys before
-  // trusting it or starting a session — do that before this goes live.
-  function handleGoogleCredential(response) {
-    var payload = parseJwt(response.credential);
-    if (!payload) return;
-    currentUser = { name: payload.name, email: payload.email, picture: payload.picture };
-    localStorage.setItem("mybio-user", JSON.stringify(currentUser));
-    render();
+  function signInWithGoogle() {
+    var provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).catch(function (err) { console.error(err); });
   }
 
   function logout() {
-    currentUser = null;
-    localStorage.removeItem("mybio-user");
-    if (window.google && google.accounts && google.accounts.id) {
-      google.accounts.id.disableAutoSelect();
-    }
-    render();
+    auth.signOut();
   }
 
-  function initGoogleSignIn() {
-    var container = document.getElementById("google-signin-btn");
-    if (!container) return; // already logged in — nothing to render
-    if (!window.google || !google.accounts || !google.accounts.id) {
-      setTimeout(initGoogleSignIn, 100); // GSI script still loading, try again shortly
-      return;
+  auth.onAuthStateChanged(function (user) {
+    currentUser = user
+      ? { uid: user.uid, name: user.displayName, email: user.email, picture: user.photoURL }
+      : null;
+    draftLoaded = false;
+    draft = { username: "", displayName: "", bio: "", avatar: null, cover: null, items: [] };
+    draftDocId = null;
+    render();
+  });
+
+  // ---------- admin panel (only for one email) ----------
+  var ADMIN_EMAIL = "muhammadrajaa1911@gmail.com";
+  var adminPanelOpen = false;
+  var adminPanelSection = null; // null | "ban" | "new"
+  var adminPanelData = null; // null = loading, [] = loaded/empty, [...] = loaded
+
+  function isAdmin() {
+    return !!currentUser && currentUser.email === ADMIN_EMAIL;
+  }
+
+  function toggleAdminPanel() {
+    adminPanelOpen = !adminPanelOpen;
+    adminPanelSection = null;
+    render();
+  }
+  function openAdminSection(section) {
+    adminPanelSection = section;
+    adminPanelData = null;
+    render();
+    db.collection("bios").orderBy("createdAt", "desc").limit(20).get().then(function (snap) {
+      adminPanelData = snap.docs.map(function (d) { return d.data(); });
+      render();
+    }).catch(function (err) {
+      console.error(err);
+      adminPanelData = [];
+      render();
+    });
+  }
+  function closeAdminPanel() {
+    adminPanelOpen = false;
+    adminPanelSection = null;
+    render();
+  }
+  function toggleBan(username, banned) {
+    db.collection("bios").doc(username).update({ banned: !banned }).then(function () {
+      openAdminSection("ban");
+    }).catch(function (err) { console.error(err); });
+  }
+
+  function adminAccountRowHtml(data, withBanBtn) {
+    var created = data.createdAt && data.createdAt.toDate ? data.createdAt.toDate().toLocaleDateString() : "";
+    return (
+      '<div class="admin-account-row">' +
+        '<div class="admin-account-info">' +
+          '<span class="admin-account-name">' + escapeHtml(data.displayName || data.username) + '</span>' +
+          '<span class="admin-account-meta">@' + escapeHtml(data.username) + (created ? " · " + created : "") + (data.banned ? " · BANNED" : "") + '</span>' +
+        '</div>' +
+        (withBanBtn
+          ? '<button type="button" class="pill pill-ghost small-pill" data-ban="' + escapeHtml(data.username) + '" data-banned="' + (data.banned ? "1" : "0") + '">' + (data.banned ? "Unban" : "Ban") + '</button>'
+          : "") +
+      '</div>'
+    );
+  }
+
+  function adminPanelHtml() {
+    if (!isAdmin()) return "";
+    var fab = '<button type="button" class="admin-fab" id="admin-fab" aria-label="Admin panel">🗂️</button>';
+    if (!adminPanelOpen) return fab;
+
+    var body;
+    if (adminPanelSection === "ban" || adminPanelSection === "new") {
+      var title = adminPanelSection === "ban" ? "Ban management" : "Newly created accounts";
+      var list;
+      if (adminPanelData === null) {
+        list = '<p class="admin-note">Loading…</p>';
+      } else if (!adminPanelData.length) {
+        list = '<p class="admin-note">No accounts yet.</p>';
+      } else {
+        list = adminPanelData.map(function (d) { return adminAccountRowHtml(d, adminPanelSection === "ban"); }).join("");
+      }
+      body =
+        '<button type="button" class="pill pill-ghost" id="admin-back">← Back</button>' +
+        '<h3>' + title + '</h3>' +
+        list;
+    } else {
+      body =
+        '<h3>Admin panel</h3>' +
+        '<button type="button" class="admin-option" id="admin-open-ban">🚫 Ban management</button>' +
+        '<button type="button" class="admin-option" id="admin-open-new">🆕 New accounts</button>' +
+        '<button type="button" class="admin-option" disabled>🎟️ Redeem code <span class="admin-soon">next update</span></button>';
     }
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleGoogleCredential
+
+    return (
+      fab +
+      '<div class="admin-overlay" id="admin-overlay">' +
+        '<div class="admin-sheet">' +
+          '<div class="admin-sheet-header">' +
+            '<span>mybio admin</span>' +
+            '<button type="button" class="icon-btn small" id="admin-close" aria-label="Close">×</button>' +
+          '</div>' +
+          body +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function attachAdminPanelEvents() {
+    var fab = document.getElementById("admin-fab");
+    if (fab) fab.addEventListener("click", toggleAdminPanel);
+    var closeBtn = document.getElementById("admin-close");
+    if (closeBtn) closeBtn.addEventListener("click", closeAdminPanel);
+    var banBtn = document.getElementById("admin-open-ban");
+    if (banBtn) banBtn.addEventListener("click", function () { openAdminSection("ban"); });
+    var newBtn = document.getElementById("admin-open-new");
+    if (newBtn) newBtn.addEventListener("click", function () { openAdminSection("new"); });
+    var backBtn = document.getElementById("admin-back");
+    if (backBtn) backBtn.addEventListener("click", function () { openAdminSection(null); });
+    var overlay = document.getElementById("admin-overlay");
+    if (overlay) {
+      overlay.addEventListener("click", function (e) {
+        var banToggle = e.target.closest("[data-ban]");
+        if (banToggle) toggleBan(banToggle.getAttribute("data-ban"), banToggle.getAttribute("data-banned") === "1");
+      });
+    }
+  }
+
+  // ---------- bio draft ----------
+  // Lives in memory + Firestore now — one document per username in the
+  // "bios" collection, plus a "users/{uid} -> username" doc so we can find
+  // "my bio" to edit. See the Firestore rules note sent alongside this file.
+  var USERNAME_REGEX = /^[a-zA-Z0-9_.-]{4,}$/;
+  var CONTENT_TYPES = [
+    { key: "social", label: "Social Media" },
+    { key: "link", label: "Link" },
+    { key: "song", label: "Song" },
+    { key: "film", label: "Film / Drama / Movie" },
+    { key: "game", label: "Game" },
+    { key: "payment", label: "Payment" }
+  ];
+
+  var draft = { username: "", displayName: "", bio: "", avatar: null, cover: null, items: [] };
+  var draftLoaded = false;
+  var draftDocId = null; // username this draft was last saved under (lets us rename safely)
+
+  function loadMyDraft(cb) {
+    if (!currentUser) { draftLoaded = true; cb(); return; }
+    db.collection("users").doc(currentUser.uid).get().then(function (userDoc) {
+      if (!userDoc.exists || !userDoc.data().username) { draftLoaded = true; cb(); return; }
+      var uname = userDoc.data().username;
+      db.collection("bios").doc(uname).get().then(function (bioDoc) {
+        if (bioDoc.exists) {
+          var data = bioDoc.data();
+          draft = {
+            username: data.username || uname,
+            displayName: data.displayName || "",
+            bio: data.bio || "",
+            avatar: data.avatar || null,
+            cover: data.cover || null,
+            items: data.items || []
+          };
+          draftDocId = uname;
+        }
+        draftLoaded = true;
+        cb();
+      });
+    }).catch(function (err) {
+      console.error(err);
+      draftLoaded = true;
+      cb();
     });
-    google.accounts.id.renderButton(container, {
-      theme: "filled_black",
-      size: "medium",
-      shape: "pill",
-      text: "signin"
+  }
+
+  function genId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  function addItem(type) {
+    draft.items.push({ id: genId(), type: type, icon: null, label: "", url: "" });
+    renderItemsList();
+  }
+
+  function removeItem(id) {
+    draft.items = draft.items.filter(function (it) { return it.id !== id; });
+    renderItemsList();
+  }
+
+  function updateItemField(id, field, value) {
+    var item = draft.items.find(function (it) { return it.id === id; });
+    if (!item) return;
+    item[field] = value;
+  }
+
+  function moveItem(id, dir) {
+    var item = draft.items.find(function (it) { return it.id === id; });
+    if (!item) return;
+    var sameType = draft.items.filter(function (it) { return it.type === item.type; });
+    var idx = sameType.findIndex(function (it) { return it.id === id; });
+    var swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= sameType.length) return;
+    var other = sameType[swapIdx];
+    var realA = draft.items.findIndex(function (it) { return it.id === item.id; });
+    var realB = draft.items.findIndex(function (it) { return it.id === other.id; });
+    var tmp = draft.items[realA];
+    draft.items[realA] = draft.items[realB];
+    draft.items[realB] = tmp;
+    renderItemsList();
+  }
+
+  function moveToTop(id) {
+    var idx = draft.items.findIndex(function (it) { return it.id === id; });
+    if (idx === -1) return;
+    var item = draft.items[idx];
+    draft.items.splice(idx, 1);
+    var firstSameType = draft.items.findIndex(function (it) { return it.type === item.type; });
+    if (firstSameType === -1) firstSameType = draft.items.length;
+    draft.items.splice(firstSameType, 0, item);
+    renderItemsList();
+  }
+
+  function handleIconUpload(id, file) {
+    var item = draft.items.find(function (it) { return it.id === id; });
+    if (!item) return;
+    item.icon = "uploading";
+    renderItemsList();
+    uploadToCloudinary(file, function (url) {
+      item.icon = url;
+      renderItemsList();
     });
+  }
+
+  function handleSongFileUpload(id, file) {
+    var item = draft.items.find(function (it) { return it.id === id; });
+    if (!item) return;
+    item.url = "uploading";
+    renderItemsList();
+    uploadToCloudinary(file, function (url) {
+      item.url = url || "";
+      renderItemsList();
+    });
+  }
+
+  function handleCoverUpload(file) {
+    var btn = document.getElementById("cover-upload-btn");
+    if (btn) btn.classList.add("uploading");
+    uploadToCloudinary(file, function (url) {
+      if (url) {
+        draft.cover = url;
+        if (btn) btn.style.backgroundImage = "url(" + url + ")";
+      }
+      if (btn) btn.classList.remove("uploading");
+    });
+  }
+
+  function handleAvatarUpload(file) {
+    var btn = document.getElementById("avatar-upload-btn");
+    if (btn) btn.classList.add("uploading");
+    uploadToCloudinary(file, function (url) {
+      if (url) {
+        draft.avatar = url;
+        if (btn) btn.innerHTML = '<img src="' + url + '" alt="" />';
+      }
+      if (btn) btn.classList.remove("uploading");
+    });
+  }
+
+  function validateUsername() {
+    var hint = document.getElementById("username-hint");
+    var value = draft.username || "";
+    var ok = USERNAME_REGEX.test(value);
+    if (hint) {
+      hint.textContent = ok
+        ? "Looks good."
+        : "4+ characters. Letters, numbers, \"_\", \"-\", \".\" only — no spaces or symbols.";
+      hint.classList.toggle("field-hint-error", !ok);
+    }
+    return ok;
+  }
+
+  function resetPublishBtn() {
+    var btn = document.getElementById("publish-btn");
+    if (btn) { btn.disabled = false; btn.textContent = "Save"; }
+  }
+
+  function publishBio() {
+    if (!currentUser || !validateUsername()) return;
+    var btn = document.getElementById("publish-btn");
+    if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+
+    var newUsername = draft.username;
+    var bioRef = db.collection("bios").doc(newUsername);
+
+    bioRef.get().then(function (existing) {
+      if (existing.exists && existing.data().uid !== currentUser.uid) {
+        var hint = document.getElementById("username-hint");
+        if (hint) { hint.textContent = "That username is already taken."; hint.classList.add("field-hint-error"); }
+        resetPublishBtn();
+        return;
+      }
+
+      var payload = {
+        uid: currentUser.uid,
+        username: newUsername,
+        displayName: draft.displayName || "",
+        bio: draft.bio || "",
+        avatar: draft.avatar || null,
+        cover: draft.cover || null,
+        items: draft.items || [],
+        banned: existing.exists ? !!existing.data().banned : false,
+        createdAt: existing.exists ? existing.data().createdAt : firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      var batch = db.batch();
+      batch.set(bioRef, payload);
+      if (draftDocId && draftDocId !== newUsername) {
+        batch.delete(db.collection("bios").doc(draftDocId));
+      }
+      batch.set(db.collection("users").doc(currentUser.uid), { username: newUsername });
+
+      batch.commit().then(function () {
+        draftDocId = newUsername;
+        navigate("/@" + newUsername);
+      }).catch(function (err) {
+        console.error(err);
+        var hint2 = document.getElementById("username-hint");
+        if (hint2) { hint2.textContent = "Something went wrong saving — try again."; hint2.classList.add("field-hint-error"); }
+        resetPublishBtn();
+      });
+    }).catch(function (err) {
+      console.error(err);
+      resetPublishBtn();
+    });
+  }
+
+  function createPage() {
+    return (
+      '<div class="page create">' +
+        '<header class="topbar create-topbar">' +
+          '<a href="/" class="icon-btn" data-link aria-label="Cancel">←</a>' +
+          '<span class="create-title">Create your bio</span>' +
+          '<button type="button" class="pill pill-solid" id="publish-btn">Save</button>' +
+        '</header>' +
+        '<div class="create-body">' +
+          '<section class="field-group">' +
+            '<label>Cover photo</label>' +
+            '<label class="cover-upload" id="cover-upload-btn" style="' + (draft.cover ? "background-image:url(" + draft.cover + ")" : "") + '">' +
+              (draft.cover ? "" : '<span>Tap to upload</span>') +
+              '<input type="file" accept="image/*" id="cover-upload-input" hidden />' +
+            '</label>' +
+          '</section>' +
+          '<section class="field-group">' +
+            '<label>Avatar</label>' +
+            '<label class="avatar-upload" id="avatar-upload-btn">' +
+              (draft.avatar ? '<img src="' + draft.avatar + '" alt="" />' : '<span>🙂</span>') +
+              '<input type="file" accept="image/*" id="avatar-upload-input" hidden />' +
+            '</label>' +
+          '</section>' +
+          '<section class="field-group">' +
+            '<label>Username</label>' +
+            '<div class="username-field">' +
+              '<span class="at-sign">@</span>' +
+              '<input type="text" id="username-input" value="' + escapeHtml(draft.username) + '" placeholder="yourname" />' +
+            '</div>' +
+            '<p class="field-hint" id="username-hint">4+ characters. Letters, numbers, "_", "-", "." only.</p>' +
+          '</section>' +
+          '<section class="field-group">' +
+            '<label>Display name</label>' +
+            '<input type="text" id="displayname-input" value="' + escapeHtml(draft.displayName) + '" placeholder="Your Name" />' +
+          '</section>' +
+          '<section class="field-group">' +
+            '<label>Bio</label>' +
+            '<textarea id="bio-input" placeholder="Tell people who you are...">' + escapeHtml(draft.bio) + '</textarea>' +
+          '</section>' +
+          '<div class="section-divider">' +
+            '<span>Your links</span>' +
+            '<button type="button" class="add-btn" id="open-type-picker" aria-label="Add">+</button>' +
+          '</div>' +
+          '<div id="items-list"></div>' +
+        '</div>' +
+        '<div class="type-picker" id="type-picker">' +
+          '<div class="type-picker-sheet">' +
+            '<div class="type-picker-header">' +
+              '<span>Add to your bio</span>' +
+              '<button type="button" class="icon-btn" id="close-type-picker" aria-label="Close">×</button>' +
+            '</div>' +
+            '<button type="button" class="type-option" data-type="social">📱 Social Media</button>' +
+            '<button type="button" class="type-option" data-type="link">🔗 Link</button>' +
+            '<button type="button" class="type-option" data-type="song">🎵 Song</button>' +
+            '<button type="button" class="type-option" data-type="film">🎬 Film / Drama / Movie</button>' +
+            '<button type="button" class="type-option" data-type="game">🎮 Game</button>' +
+            '<button type="button" class="type-option" data-type="payment">💸 Payment</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function itemRowHtml(item, idx, total) {
+    var iconPreview;
+    if (item.icon === "uploading") {
+      iconPreview = '<span class="item-icon-placeholder">…</span>';
+    } else if (item.icon) {
+      iconPreview = '<img src="' + item.icon + '" class="item-icon-preview" alt="" />';
+    } else {
+      iconPreview = '<span class="item-icon-placeholder">＋</span>';
+    }
+
+    var extra = "";
+    if (item.type === "song") {
+      extra =
+        '<div class="item-extra">' +
+          '<label class="file-btn">Upload an mp3<input type="file" accept="audio/*" data-song-upload="' + item.id + '" hidden /></label>' +
+          (item.url === "uploading" ? '<span class="field-hint">Uploading…</span>' : "") +
+          (item.url && item.url !== "uploading" ? '<audio controls src="' + item.url + '" class="item-audio"></audio>' : "") +
+        '</div>';
+    }
+
+    var copyBtn = item.type === "link"
+      ? '<button type="button" class="icon-btn small" data-copy="' + item.id + '" aria-label="Copy link">⧉</button>'
+      : "";
+
+    return (
+      '<div class="item-row" data-item-id="' + item.id + '">' +
+        '<label class="item-icon-btn">' +
+          iconPreview +
+          '<input type="file" accept="image/png,image/jpeg,image/webp" data-icon-upload="' + item.id + '" hidden />' +
+        '</label>' +
+        '<div class="item-fields">' +
+          '<input type="text" placeholder="Label (e.g. Instagram)" value="' + escapeHtml(item.label) + '" data-field="label" data-item-id="' + item.id + '" />' +
+          '<input type="text" placeholder="https://..." value="' + escapeHtml(item.url) + '" data-field="url" data-item-id="' + item.id + '" />' +
+          extra +
+        '</div>' +
+        '<div class="item-controls">' +
+          copyBtn +
+          '<button type="button" class="icon-btn small" data-move="' + item.id + ':-1"' + (idx === 0 ? " disabled" : "") + ' aria-label="Move up">▲</button>' +
+          '<button type="button" class="icon-btn small" data-move="' + item.id + ':1"' + (idx === total - 1 ? " disabled" : "") + ' aria-label="Move down">▼</button>' +
+          '<button type="button" class="icon-btn small" data-top="' + item.id + '" aria-label="Move to top">⤒</button>' +
+          '<button type="button" class="icon-btn small danger" data-remove="' + item.id + '" aria-label="Remove">🗑</button>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderItemsList() {
+    var container = document.getElementById("items-list");
+    if (!container) return;
+    var html = "";
+    CONTENT_TYPES.forEach(function (typeDef) {
+      var itemsOfType = draft.items.filter(function (it) { return it.type === typeDef.key; });
+      if (!itemsOfType.length) return;
+      html += '<div class="section-divider"><span>' + typeDef.label + '</span></div>';
+      itemsOfType.forEach(function (item, idx) {
+        html += itemRowHtml(item, idx, itemsOfType.length);
+      });
+    });
+    container.innerHTML = html || '<p class="empty-hint">Nothing yet — tap + to add a social, link, song, and more.</p>';
+  }
+
+  function attachItemsListEvents() {
+    var container = document.getElementById("items-list");
+    if (!container) return;
+
+    container.addEventListener("input", function (e) {
+      var t = e.target;
+      if (t.matches("input[data-field]")) {
+        updateItemField(t.getAttribute("data-item-id"), t.getAttribute("data-field"), t.value);
+      }
+    });
+
+    container.addEventListener("change", function (e) {
+      var t = e.target;
+      if (t.matches("input[data-icon-upload]") && t.files && t.files[0]) {
+        handleIconUpload(t.getAttribute("data-icon-upload"), t.files[0]);
+      }
+      if (t.matches("input[data-song-upload]") && t.files && t.files[0]) {
+        handleSongFileUpload(t.getAttribute("data-song-upload"), t.files[0]);
+      }
+    });
+
+    container.addEventListener("click", function (e) {
+      var removeBtn = e.target.closest("[data-remove]");
+      if (removeBtn) return removeItem(removeBtn.getAttribute("data-remove"));
+
+      var topBtn = e.target.closest("[data-top]");
+      if (topBtn) return moveToTop(topBtn.getAttribute("data-top"));
+
+      var moveBtn = e.target.closest("[data-move]");
+      if (moveBtn) {
+        var parts = moveBtn.getAttribute("data-move").split(":");
+        return moveItem(parts[0], parseInt(parts[1], 10));
+      }
+
+      var copyBtn = e.target.closest("[data-copy]");
+      if (copyBtn) {
+        var id = copyBtn.getAttribute("data-copy");
+        var item = draft.items.find(function (it) { return it.id === id; });
+        if (item && item.url) {
+          navigator.clipboard.writeText(item.url).catch(function () {});
+          copyBtn.textContent = "✓";
+          setTimeout(function () { copyBtn.textContent = "⧉"; }, 1200);
+        }
+      }
+    });
+  }
+
+  function attachCreatePageEvents() {
+    var coverInput = document.getElementById("cover-upload-input");
+    if (coverInput) {
+      coverInput.addEventListener("change", function () {
+        if (coverInput.files && coverInput.files[0]) handleCoverUpload(coverInput.files[0]);
+      });
+    }
+    var avatarInput = document.getElementById("avatar-upload-input");
+    if (avatarInput) {
+      avatarInput.addEventListener("change", function () {
+        if (avatarInput.files && avatarInput.files[0]) handleAvatarUpload(avatarInput.files[0]);
+      });
+    }
+
+    var usernameInput = document.getElementById("username-input");
+    if (usernameInput) {
+      usernameInput.addEventListener("input", function () {
+        draft.username = usernameInput.value.trim();
+        validateUsername();
+      });
+    }
+    var nameInput = document.getElementById("displayname-input");
+    if (nameInput) {
+      nameInput.addEventListener("input", function () {
+        draft.displayName = nameInput.value;
+      });
+    }
+    var bioInput = document.getElementById("bio-input");
+    if (bioInput) {
+      bioInput.addEventListener("input", function () {
+        draft.bio = bioInput.value;
+      });
+    }
+
+    var openPicker = document.getElementById("open-type-picker");
+    var picker = document.getElementById("type-picker");
+    var closePicker = document.getElementById("close-type-picker");
+    if (openPicker && picker) openPicker.addEventListener("click", function () { picker.classList.add("open"); });
+    if (closePicker && picker) closePicker.addEventListener("click", function () { picker.classList.remove("open"); });
+    if (picker) {
+      picker.addEventListener("click", function (e) {
+        if (e.target === picker) picker.classList.remove("open");
+        var opt = e.target.closest("[data-type]");
+        if (opt) {
+          addItem(opt.getAttribute("data-type"));
+          picker.classList.remove("open");
+        }
+      });
+    }
+
+    var publishBtn = document.getElementById("publish-btn");
+    if (publishBtn) publishBtn.addEventListener("click", publishBio);
+
+    attachItemsListEvents();
+    renderItemsList();
   }
 
   // ---------- pages ----------
@@ -493,7 +1214,7 @@
                   '<span class="user-name">' + escapeHtml(currentUser.name) + '</span>' +
                   '<button type="button" class="pill pill-ghost" id="logout-btn">Log out</button>' +
                 '</div>'
-              : '<div id="google-signin-btn"></div>') +
+              : '<button type="button" class="pill pill-solid" id="google-signin-btn">Sign in with Google</button>') +
             '<button type="button" class="icon-btn" id="theme-toggle" aria-label="Toggle theme">' +
               (theme === "dark" ? SUN_ICON : MOON_ICON) +
             '</button>' +
@@ -513,7 +1234,220 @@
           '<span class="dot">·</span>' +
           '<a href="https://instagram.com/edd_00z" target="_blank" rel="noreferrer">@edd_00z</a>' +
         '</footer>' +
+        adminPanelHtml() +
       '</div>'
+    );
+  }
+
+  function profileLoadingHtml(username) {
+    return (
+      '<div class="page create">' +
+        '<header class="topbar create-topbar">' +
+          '<a href="/" class="icon-btn" data-link aria-label="Back">←</a>' +
+          '<span class="create-title">@' + escapeHtml(username) + '</span>' +
+          '<span style="width:40px;"></span>' +
+        '</header>' +
+        '<div class="create-body"><p class="empty-hint">Loading…</p></div>' +
+      '</div>'
+    );
+  }
+
+  function profileNotFoundHtml(username) {
+    return (
+      '<div class="page create">' +
+        '<header class="topbar create-topbar">' +
+          '<a href="/" class="icon-btn" data-link aria-label="Back">←</a>' +
+          '<span class="create-title">@' + escapeHtml(username) + '</span>' +
+          '<span style="width:40px;"></span>' +
+        '</header>' +
+        '<div class="create-body" style="text-align:center;padding-top:60px;">' +
+          '<p class="empty-hint">No bio found for @' + escapeHtml(username) + '.</p>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function profileBannedHtml(username) {
+    return (
+      '<div class="page create">' +
+        '<header class="topbar create-topbar">' +
+          '<a href="/" class="icon-btn" data-link aria-label="Back">←</a>' +
+          '<span class="create-title">@' + escapeHtml(username) + '</span>' +
+          '<span style="width:40px;"></span>' +
+        '</header>' +
+        '<div class="create-body" style="text-align:center;padding-top:60px;">' +
+          '<p class="empty-hint">This bio has been suspended.</p>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function profileContentHtml(username, data, isOwner) {
+    var coverStyle = data.cover
+      ? 'background-image:url(' + data.cover + ');background-size:cover;background-position:center;'
+      : 'background:linear-gradient(135deg,#5b4fe8,#8a7dff);';
+
+    var avatarHtml = data.avatar
+      ? '<img src="' + data.avatar + '" class="profile-avatar" alt="" />'
+      : '<div class="profile-avatar profile-avatar-placeholder">🙂</div>';
+
+    var items = data.items || [];
+    var itemsHtml = "";
+    CONTENT_TYPES.forEach(function (typeDef) {
+      var itemsOfType = items.filter(function (it) { return it.type === typeDef.key; });
+      if (!itemsOfType.length) return;
+      itemsHtml += '<div class="section-divider profile-divider"><span>' + typeDef.label + '</span></div>';
+      itemsOfType.forEach(function (item) { itemsHtml += profileItemHtml(item); });
+    });
+
+    return (
+      '<div class="page create profile-page">' +
+        '<header class="topbar create-topbar">' +
+          '<a href="/" class="icon-btn" data-link aria-label="Back">←</a>' +
+          '<span class="create-title">@' + escapeHtml(username) + '</span>' +
+          (isOwner ? '<a href="/create" class="icon-btn" data-link aria-label="Edit">✏️</a>' : '<span style="width:40px;"></span>') +
+        '</header>' +
+        '<div class="profile-cover" style="' + coverStyle + '"></div>' +
+        '<div class="create-body profile-body">' +
+          '<div class="profile-avatar-row">' + avatarHtml + '</div>' +
+          '<h1 class="profile-name">' + escapeHtml(data.displayName || username) + '</h1>' +
+          '<p class="profile-username">@' + escapeHtml(username) + '</p>' +
+          (data.bio ? '<p class="profile-bio">' + escapeHtml(data.bio) + '</p>' : "") +
+          itemsHtml +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderProfileRoute(app, path) {
+    var username = decodeURIComponent(path.slice(2)); // strip leading "/@"
+    app.innerHTML = profileLoadingHtml(username);
+    attachCommonListeners();
+
+    db.collection("bios").doc(username).get().then(function (doc) {
+      if (window.location.pathname !== path) return; // navigated away while loading
+      if (!doc.exists) {
+        app.innerHTML = profileNotFoundHtml(username);
+        attachCommonListeners();
+        return;
+      }
+      var data = doc.data();
+      if (data.banned) {
+        app.innerHTML = profileBannedHtml(username);
+        attachCommonListeners();
+        return;
+      }
+      var isOwner = !!currentUser && currentUser.uid === data.uid;
+      app.innerHTML = profileContentHtml(username, data, isOwner);
+      attachCommonListeners();
+    }).catch(function (err) {
+      console.error(err);
+      app.innerHTML = profileNotFoundHtml(username);
+      attachCommonListeners();
+    });
+  }
+
+  function searchPage() {
+    return (
+      '<div class="page create">' +
+        '<header class="topbar create-topbar">' +
+          '<a href="/" class="icon-btn" data-link aria-label="Back">←</a>' +
+          '<span class="create-title">Search bios</span>' +
+          '<span style="width:40px;"></span>' +
+        '</header>' +
+        '<div class="create-body">' +
+          '<div class="username-field">' +
+            '<span class="at-sign">@</span>' +
+            '<input type="text" id="search-input" placeholder="username" />' +
+          '</div>' +
+          '<button type="button" class="pill pill-solid" id="search-btn" style="margin-top:12px;">Search</button>' +
+          '<div id="search-results" style="margin-top:20px;"></div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function attachSearchPageEvents() {
+    var btn = document.getElementById("search-btn");
+    var input = document.getElementById("search-input");
+    var results = document.getElementById("search-results");
+    if (!btn || !input || !results) return;
+
+    function doSearch() {
+      var q = (input.value || "").trim();
+      if (!q) return;
+      results.innerHTML = '<p class="empty-hint">Searching…</p>';
+      db.collection("bios").doc(q).get().then(function (doc) {
+        if (!doc.exists || doc.data().banned) {
+          results.innerHTML = '<p class="empty-hint">No bio found for @' + escapeHtml(q) + '.</p>';
+          return;
+        }
+        var data = doc.data();
+        results.innerHTML =
+          '<a class="profile-item profile-item-link" href="/@' + escapeHtml(q) + '" data-link>' +
+            (data.avatar ? '<img src="' + data.avatar + '" class="profile-item-icon" alt="" />' : '<div class="profile-item-icon profile-item-icon-placeholder"></div>') +
+            '<span class="profile-item-label">' + escapeHtml(data.displayName || q) + ' · @' + escapeHtml(q) + '</span>' +
+          '</a>';
+      }).catch(function (err) {
+        console.error(err);
+        results.innerHTML = '<p class="empty-hint">Something went wrong.</p>';
+      });
+    }
+
+    btn.addEventListener("click", doSearch);
+    input.addEventListener("keydown", function (e) { if (e.key === "Enter") doSearch(); });
+  }
+
+  function signInRequiredHtml() {
+    return (
+      '<div class="page create">' +
+        '<header class="topbar create-topbar">' +
+          '<a href="/" class="icon-btn" data-link aria-label="Back">←</a>' +
+          '<span class="create-title">Create your bio</span>' +
+          '<span style="width:40px;"></span>' +
+        '</header>' +
+        '<div class="create-body" style="text-align:center;padding-top:60px;">' +
+          '<p class="empty-hint">Sign in with Google on the home page first.</p>' +
+          '<a href="/" class="pill pill-solid" data-link style="margin-top:16px;display:inline-flex;">← Back home</a>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function profileItemHtml(item) {
+    var icon = item.icon
+      ? '<img src="' + item.icon + '" class="profile-item-icon" alt="" />'
+      : '<div class="profile-item-icon profile-item-icon-placeholder"></div>';
+
+    if (item.type === "song") {
+      return (
+        '<div class="profile-item">' +
+          icon +
+          '<div class="profile-item-body">' +
+            '<span class="profile-item-label">' + escapeHtml(item.label || "Untitled") + '</span>' +
+            (item.url ? '<audio controls src="' + item.url + '" class="item-audio"></audio>' : '<span class="profile-item-empty">No source yet</span>') +
+          '</div>' +
+        '</div>'
+      );
+    }
+
+    if (item.type === "link") {
+      return (
+        '<div class="profile-item">' +
+          '<a class="profile-item-link-inner" href="' + escapeHtml(item.url || "#") + '" target="_blank" rel="noreferrer">' +
+            icon +
+            '<span class="profile-item-label">' + escapeHtml(item.label || item.url || "Untitled") + '</span>' +
+          '</a>' +
+          '<button type="button" class="icon-btn small" data-copy-static="' + escapeHtml(item.url || "") + '" aria-label="Copy">⧉</button>' +
+        '</div>'
+      );
+    }
+
+    return (
+      '<a class="profile-item profile-item-link" href="' + escapeHtml(item.url || "#") + '" target="_blank" rel="noreferrer">' +
+        icon +
+        '<span class="profile-item-label">' + escapeHtml(item.label || item.url || "Untitled") + '</span>' +
+      '</a>'
     );
   }
 
@@ -529,26 +1463,62 @@
 
   function routeToHtml(path) {
     if (path === "/") return homePage();
-    if (path === "/search") return stubPage("Search");
-    if (path === "/create") return stubPage("Create");
-    if (path.indexOf("/@") === 0) return stubPage("Profile");
+    if (path === "/search") return searchPage();
     return stubPage("Not found");
+  }
+
+  function attachCommonListeners() {
+    var toggleBtn = document.getElementById("theme-toggle");
+    if (toggleBtn) toggleBtn.addEventListener("click", toggleTheme);
+    var logoutBtn = document.getElementById("logout-btn");
+    if (logoutBtn) logoutBtn.addEventListener("click", logout);
+    var signinBtn = document.getElementById("google-signin-btn");
+    if (signinBtn) signinBtn.addEventListener("click", signInWithGoogle);
+    attachLampEvents();
+    attachAdminPanelEvents();
+    attachSearchPageEvents();
+  }
+
+  function renderCreateRoute(app) {
+    if (!currentUser) {
+      app.innerHTML = signInRequiredHtml();
+      attachCommonListeners();
+      return;
+    }
+    if (!draftLoaded) {
+      app.innerHTML = profileLoadingHtml("create");
+      loadMyDraft(function () { render(); });
+      return;
+    }
+    app.innerHTML = createPage();
+    attachCreatePageEvents();
+    attachCommonListeners();
   }
 
   // ---------- render ----------
   function render() {
     var app = document.getElementById("app");
-    app.innerHTML = routeToHtml(window.location.pathname);
+    var path = window.location.pathname;
 
-    var toggleBtn = document.getElementById("theme-toggle");
-    if (toggleBtn) toggleBtn.addEventListener("click", toggleTheme);
+    if (path === "/create") { renderCreateRoute(app); return; }
+    if (path.indexOf("/@") === 0) { renderProfileRoute(app, path); return; }
 
-    var logoutBtn = document.getElementById("logout-btn");
-    if (logoutBtn) logoutBtn.addEventListener("click", logout);
-
-    initGoogleSignIn();
-    attachLampEvents();
+    app.innerHTML = routeToHtml(path);
+    attachCommonListeners();
   }
+
+  document.addEventListener("click", function (e) {
+    var copyBtn = e.target.closest("[data-copy-static]");
+    if (copyBtn) {
+      var val = copyBtn.getAttribute("data-copy-static");
+      if (val) {
+        navigator.clipboard.writeText(val).catch(function () {});
+        var old = copyBtn.textContent;
+        copyBtn.textContent = "✓";
+        setTimeout(function () { copyBtn.textContent = old; }, 1200);
+      }
+    }
+  });
 
   document.addEventListener("click", function (e) {
     var link = e.target.closest("[data-link]");
