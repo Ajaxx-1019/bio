@@ -67,6 +67,8 @@
     -webkit-touch-callout: none;
   }
   input, textarea { -webkit-user-select: text; user-select: text; }
+  ::selection { background: transparent; }
+  ::-moz-selection { background: transparent; }
   img { -webkit-user-drag: none; user-drag: none; }
 
   html, body, #app { height: 100%; }
@@ -80,6 +82,18 @@
     position: relative;
   }
   a { color: inherit; }
+
+  /* Buttons feeling "not smooth" on touch is almost always this: the browser's
+     default gray tap flash, :hover getting stuck after a tap instead of a real
+     mouseover, and no immediate visual feedback on press. Fix all three. */
+  button, .pill, a.pill, .icon-btn, .admin-fab, .add-btn, .type-option, .admin-option, .user-chip, .file-btn {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .pill:active, .icon-btn:active, .admin-fab:active, .add-btn:active, .type-option:active, .admin-option:active {
+    transform: scale(0.95);
+    transition: transform 80ms ease;
+  }
 
   /* subtle paper grain + vignette — pure CSS, no image assets, cheap to render */
   body::before {
@@ -187,8 +201,13 @@
     display: flex; align-items: center; justify-content: center; cursor: pointer;
     transition: transform var(--transition), background var(--transition);
   }
-  .icon-btn:hover { transform: translateY(-2px); }
   .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (hover: hover) and (pointer: fine) {
+    .icon-btn:hover { transform: translateY(-2px); }
+    .pill-solid:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -8px var(--accent); }
+    .admin-fab:hover { transform: translateY(-2px); }
+  }
 
   .pill {
     font-family: var(--font-body); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px;
@@ -202,7 +221,6 @@
   .pill-ghost:hover { color: var(--text); border-color: var(--accent); }
 
   .pill-solid { background: var(--accent); color: #1a120b; box-shadow: 0 8px 20px -8px var(--accent); }
-  .pill-solid:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -8px var(--accent); }
 
   .pill-outline { border-color: var(--accent-2); color: var(--text); background: transparent; }
   .pill-outline:hover { background: var(--accent-2); color: var(--text); border-color: var(--accent-2); }
@@ -223,9 +241,25 @@
   .footer a:hover { text-decoration: underline; }
   .dot { opacity: 0.5; }
 
-  .user-chip { display: flex; align-items: center; gap: 10px; }
-  .user-avatar { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); display: block; }
-  .user-name { font-size: 12px; color: var(--text-dim); max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .user-chip { position: relative; display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 6px 10px 6px 6px; border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--bg-soft); }
+  .user-avatar { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--border); display: block; }
+  .user-name { font-size: 12px; color: var(--text-dim); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .user-chip-caret { font-size: 10px; color: var(--text-dim); transition: transform var(--transition); }
+  .user-chip.open .user-chip-caret { transform: rotate(180deg); }
+  .user-menu {
+    position: absolute; top: calc(100% + 8px); right: 0; min-width: 140px;
+    background: var(--bg-soft); border: 1px solid var(--border); border-radius: 12px;
+    padding: 6px; box-shadow: 0 12px 28px -12px rgba(0,0,0,0.5);
+    opacity: 0; transform: translateY(-6px); pointer-events: none; transition: opacity var(--transition), transform var(--transition);
+    z-index: 5;
+  }
+  .user-chip.open .user-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .user-menu-item {
+    display: block; width: 100%; text-align: left; padding: 9px 10px; border-radius: 8px;
+    border: none; background: transparent; color: var(--text); font-family: var(--font-body);
+    font-size: 13px; cursor: pointer;
+  }
+  .user-menu-item:hover { background: rgba(245,241,255,0.08); }
 
   .admin-fab {
     position: fixed; bottom: 20px; right: 20px; width: 48px; height: 48px; border-radius: 50%;
@@ -233,7 +267,6 @@
     cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center;
     transition: transform var(--transition);
   }
-  .admin-fab:hover { transform: translateY(-2px); }
   .admin-overlay {
     position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 30;
     display: flex; align-items: flex-end; justify-content: center;
@@ -624,8 +657,16 @@
 
   function signInWithGoogle() {
     var provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider).catch(function (err) { console.error(err); });
+    auth.signInWithRedirect(provider);
   }
+
+  // Surfaces the exact Firebase error on the phone itself (no devtools needed).
+  // Common causes: this origin isn't in Authentication -> Settings ->
+  // Authorized domains, or Google sign-in isn't enabled under Sign-in method.
+  auth.getRedirectResult().catch(function (err) {
+    console.error("Google sign-in failed:", err);
+    alert("Sign-in failed: " + (err && err.message ? err.message : "unknown error") + (err && err.code ? " (" + err.code + ")" : ""));
+  });
 
   function logout() {
     auth.signOut();
@@ -954,12 +995,14 @@
         navigate("/@" + newUsername);
       }).catch(function (err) {
         console.error(err);
+        alert("Save failed: " + (err && err.message ? err.message : err) + (err && err.code ? " (" + err.code + ")" : ""));
         var hint2 = document.getElementById("username-hint");
         if (hint2) { hint2.textContent = "Something went wrong saving — try again."; hint2.classList.add("field-hint-error"); }
         resetPublishBtn();
       });
     }).catch(function (err) {
       console.error(err);
+      alert("Save failed: " + (err && err.message ? err.message : err) + (err && err.code ? " (" + err.code + ")" : ""));
       resetPublishBtn();
     });
   }
@@ -1209,10 +1252,13 @@
           '<span class="wordmark">mybio</span>' +
           '<div class="topbar-actions">' +
             (currentUser
-              ? '<div class="user-chip">' +
+              ? '<div class="user-chip" id="user-chip">' +
                   '<img src="' + currentUser.picture + '" alt="" class="user-avatar" referrerpolicy="no-referrer" />' +
                   '<span class="user-name">' + escapeHtml(currentUser.name) + '</span>' +
-                  '<button type="button" class="pill pill-ghost" id="logout-btn">Log out</button>' +
+                  '<span class="user-chip-caret">▾</span>' +
+                  '<div class="user-menu" id="user-menu">' +
+                    '<button type="button" class="user-menu-item" id="logout-btn">Log out</button>' +
+                  '</div>' +
                 '</div>'
               : '<button type="button" class="pill pill-solid" id="google-signin-btn">Sign in with Google</button>') +
             '<button type="button" class="icon-btn" id="theme-toggle" aria-label="Toggle theme">' +
@@ -1342,6 +1388,7 @@
       attachCommonListeners();
     }).catch(function (err) {
       console.error(err);
+      alert("Load failed: " + (err && err.message ? err.message : err) + (err && err.code ? " (" + err.code + ")" : ""));
       app.innerHTML = profileNotFoundHtml(username);
       attachCommonListeners();
     });
@@ -1390,6 +1437,7 @@
           '</a>';
       }).catch(function (err) {
         console.error(err);
+        alert("Search failed: " + (err && err.message ? err.message : err) + (err && err.code ? " (" + err.code + ")" : ""));
         results.innerHTML = '<p class="empty-hint">Something went wrong.</p>';
       });
     }
@@ -1472,6 +1520,13 @@
     if (toggleBtn) toggleBtn.addEventListener("click", toggleTheme);
     var logoutBtn = document.getElementById("logout-btn");
     if (logoutBtn) logoutBtn.addEventListener("click", logout);
+    var userChip = document.getElementById("user-chip");
+    if (userChip) {
+      userChip.addEventListener("click", function (e) {
+        if (e.target.closest("#logout-btn")) return; // let the click through to logout
+        userChip.classList.toggle("open");
+      });
+    }
     var signinBtn = document.getElementById("google-signin-btn");
     if (signinBtn) signinBtn.addEventListener("click", signInWithGoogle);
     attachLampEvents();
@@ -1506,6 +1561,11 @@
     app.innerHTML = routeToHtml(path);
     attachCommonListeners();
   }
+
+  document.addEventListener("click", function (e) {
+    var chip = document.getElementById("user-chip");
+    if (chip && !chip.contains(e.target)) chip.classList.remove("open");
+  });
 
   document.addEventListener("click", function (e) {
     var copyBtn = e.target.closest("[data-copy-static]");
