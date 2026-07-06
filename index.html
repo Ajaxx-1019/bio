@@ -15,6 +15,8 @@
 <script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore-compat.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
 
 <!-- Real "no address bar at all" only exists once this is installed as an app
      (Add to Home Screen) — a website can't force that in a normal browser tab,
@@ -231,16 +233,30 @@
 
   .hero {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    text-align: center; padding: 24px 20px; position: relative; z-index: 2;
+    text-align: center; padding: 24px 20px 90px; position: relative; z-index: 2;
   }
   .eyebrow { font-family: var(--font-body); font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 18px; }
   .title { font-family: var(--font-display); font-weight: 600; font-size: clamp(52px, 11vw, 104px); margin: 0; line-height: 1; animation: pop-in 500ms cubic-bezier(0.2, 0.9, 0.3, 1.3); }
   .subtitle { max-width: 440px; color: var(--text-dim); font-size: 15px; line-height: 1.7; margin: 22px 0 38px; }
-  .cta-row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  .cta-row {
+    display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+    animation: fade-up-in 460ms ease both; animation-delay: 120ms;
+  }
 
   @keyframes pop-in { from { opacity: 0; transform: translateY(16px) scale(0.96); } to { opacity: 1; transform: none; } }
+  @keyframes fade-up-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
-  .footer { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 20px; font-size: 12px; color: var(--text-dim); position: relative; z-index: 2; }
+  .footer {
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap; row-gap: 4px;
+    gap: 8px; padding: 14px 20px 16px; font-size: 12px; color: var(--text-dim);
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+    background: linear-gradient(to top, var(--bg) 55%, transparent);
+  }
+  .visitor-eye { display: inline-block; animation: blink-eye 5s ease-in-out infinite; }
+  @keyframes blink-eye {
+    0%, 92%, 100% { transform: scaleY(1); }
+    95% { transform: scaleY(0.1); }
+  }
   .footer a { color: var(--accent); text-decoration: none; font-weight: 700; }
   .footer a:hover { text-decoration: underline; }
   .dot { opacity: 0.5; }
@@ -347,6 +363,8 @@
   .empty-hint { color: #9a9aa5; font-size: 13px; text-align: center; padding: 24px 0; }
 
   .item-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border: 1px solid #ececef; border-radius: 12px; margin-bottom: 8px; background: #fff; }
+  .item-row.pop-in { animation: item-pop-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+  @keyframes item-pop-in { from { opacity: 0; transform: scale(0.92) translateY(6px); } to { opacity: 1; transform: none; } }
   .item-icon-btn { width: 38px; height: 38px; border-radius: 10px; background: #f3f3f5; border: 1px dashed #d8d8de; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; flex-shrink: 0; }
   .item-icon-preview { width: 100%; height: 100%; object-fit: cover; }
   .item-icon-placeholder { color: #9a9aa5; font-size: 18px; }
@@ -397,6 +415,17 @@
   .admin-account-name { font-size: 13px; font-weight: 700; }
   .admin-account-meta { font-size: 11px; color: var(--text-dim); }
   .small-pill { padding: 6px 12px; font-size: 11px; flex-shrink: 0; }
+
+  .crop-modal {
+    position: fixed; inset: 0; background: rgba(10, 10, 14, 0.8); z-index: 40;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 200ms ease;
+  }
+  .crop-modal.open { opacity: 1; pointer-events: auto; }
+  .crop-modal-inner { background: #fff; border-radius: 16px; padding: 16px; width: 92%; max-width: 420px; }
+  .crop-image-wrap { max-height: 55vh; overflow: hidden; margin-bottom: 14px; background: #000; border-radius: 8px; }
+  .crop-image-wrap img { display: block; max-width: 100%; }
+  .crop-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
   .profile-cover { height: 160px; width: 100%; }
   .profile-body { padding-top: 0; }
@@ -467,11 +496,36 @@
   document.documentElement.setAttribute("data-theme", getTheme());
 
   // ---------- tiny router (no library needed) ----------
+  // Fades the current page out, swaps content, fades the new one in — so
+  // switching pages doesn't feel like a hard instant jump-cut.
+  function withPageTransition(applyFn) {
+    var app = document.getElementById("app");
+    if (!app) { applyFn(); return; }
+    app.style.transition = "opacity 140ms ease, transform 140ms ease";
+    app.style.opacity = "0";
+    app.style.transform = "translateY(6px)";
+    setTimeout(function () {
+      applyFn();
+      var app2 = document.getElementById("app");
+      if (!app2) return;
+      app2.style.transition = "none";
+      app2.style.opacity = "0";
+      app2.style.transform = "translateY(10px)";
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          app2.style.transition = "opacity 220ms ease, transform 220ms ease";
+          app2.style.opacity = "1";
+          app2.style.transform = "translateY(0)";
+        });
+      });
+    }, 140);
+  }
+
   function navigate(path) {
     history.pushState({}, "", path);
-    render();
+    withPageTransition(render);
   }
-  window.addEventListener("popstate", render);
+  window.addEventListener("popstate", function () { withPageTransition(render); });
 
   // ---------- flickering detective lamp ----------
   // Faulty-bulb feel: irregular random dips instead of a clean repeating loop.
@@ -499,26 +553,62 @@
     osc.stop(t + 0.04);
   }
 
+  // Filtered noise burst — no audio file needed, just approximates a quick
+  // paper-crumple/toss-in-the-bin sound for the trash button.
+  function playTrashSound() {
+    if (!audioCtx) return;
+    var duration = 0.28;
+    var bufferSize = Math.floor(audioCtx.sampleRate * duration);
+    var buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    var data = buffer.getChannelData(0);
+    for (var i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.6);
+    }
+    var noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+    var filter = audioCtx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.value = 2400;
+    filter.Q.value = 0.6;
+    var gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    noise.connect(filter).connect(gain).connect(audioCtx.destination);
+    noise.start();
+  }
+
+  function isHomeRoute() {
+    return window.location.pathname === "/";
+  }
+
   function scheduleFlicker() {
     setTimeout(function () {
-      document.body.classList.add("flicker");
-      playClick();
-      var dipMs = 50 + Math.random() * 140;
-      setTimeout(function () {
-        document.body.classList.remove("flicker");
+      if (isHomeRoute()) {
+        document.body.classList.add("flicker");
         playClick();
-        // occasionally double-flicker, like a bad connection
-        if (Math.random() < 0.3) {
-          setTimeout(function () {
-            document.body.classList.add("flicker");
+        var dipMs = 50 + Math.random() * 140;
+        setTimeout(function () {
+          if (isHomeRoute()) {
+            document.body.classList.remove("flicker");
             playClick();
+          }
+          // occasionally double-flicker, like a bad connection
+          if (Math.random() < 0.3) {
             setTimeout(function () {
-              document.body.classList.remove("flicker");
-              playClick();
-            }, 40 + Math.random() * 80);
-          }, 90);
-        }
-      }, dipMs);
+              if (isHomeRoute()) {
+                document.body.classList.add("flicker");
+                playClick();
+              }
+              setTimeout(function () {
+                if (isHomeRoute()) {
+                  document.body.classList.remove("flicker");
+                  playClick();
+                }
+              }, 40 + Math.random() * 80);
+            }, 90);
+          }
+        }, dipMs);
+      }
       scheduleFlicker();
     }, 1500 + Math.random() * 4500);
   }
@@ -659,6 +749,34 @@
 
   // { uid, name, email, picture } — set by Firebase itself, never hand-decoded
   var currentUser = null;
+  var myBioUsername = null; // just the username, for the home page "My Bio!" shortcut
+
+  var visitorCount = null;
+
+  function bumpVisitorCount() {
+    var ref = db.collection("meta").doc("visitorCount");
+    db.runTransaction(function (tx) {
+      return tx.get(ref).then(function (doc) {
+        var next = doc.exists ? (doc.data().count || 0) + 1 : 1;
+        tx.set(ref, { count: next });
+        return next;
+      });
+    }).then(function (next) {
+      visitorCount = next;
+      var el = document.getElementById("visitor-count");
+      if (el) el.textContent = next;
+    }).catch(function (err) {
+      console.error("visitor count failed:", err);
+    });
+  }
+
+  function refreshMyBioUsername() {
+    if (!currentUser) { myBioUsername = null; return; }
+    db.collection("users").doc(currentUser.uid).get().then(function (doc) {
+      myBioUsername = doc.exists ? doc.data().username : null;
+      render();
+    }).catch(function () {});
+  }
 
   function signInWithGoogle() {
     var provider = new firebase.auth.GoogleAuthProvider();
@@ -684,7 +802,9 @@
     draftLoaded = false;
     draft = { username: "", displayName: "", bio: "", avatar: null, cover: null, items: [] };
     draftDocId = null;
+    myBioUsername = null;
     render();
+    refreshMyBioUsername();
   });
 
   // ---------- admin panel (only for one email) ----------
@@ -853,8 +973,12 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
+  var lastAddedItemId = null;
+
   function addItem(type) {
-    draft.items.push({ id: genId(), type: type, icon: null, label: "", url: "" });
+    var item = { id: genId(), type: type, icon: null, label: "", url: "" };
+    draft.items.push(item);
+    lastAddedItemId = item.id;
     renderItemsList();
   }
 
@@ -908,6 +1032,12 @@
   }
 
   function handleSongFileUpload(id, file) {
+    var okType = /^audio\/(mpeg|mp3|wav|x-wav|wave|ogg|mp4|x-m4a)$/i.test(file.type);
+    var okExt = /\.(mp3|wav|ogg|m4a)$/i.test(file.name);
+    if (!okType && !okExt) {
+      alert("Please choose an mp3, wav, ogg, or m4a file.");
+      return;
+    }
     var item = draft.items.find(function (it) { return it.id === id; });
     if (!item) return;
     item.url = "uploading";
@@ -916,6 +1046,50 @@
       item.url = url || "";
       renderItemsList();
     });
+  }
+
+  // ---------- photo crop modal (shared by cover / avatar / item icons) ----------
+  var cropper = null;
+  var cropCallback = null;
+
+  function openCropModal(file, aspectRatio, cb) {
+    var modal = document.getElementById("crop-modal");
+    var img = document.getElementById("crop-image");
+    if (!modal || !img || !window.Cropper) { cb(file); return; } // fallback: use the raw file
+    var reader = new FileReader();
+    reader.onload = function () {
+      img.onload = function () {
+        if (cropper) { cropper.destroy(); cropper = null; }
+        cropper = new Cropper(img, { aspectRatio: aspectRatio, viewMode: 1, background: false, autoCropArea: 1 });
+      };
+      img.src = reader.result;
+      modal.classList.add("open");
+    };
+    reader.readAsDataURL(file);
+    cropCallback = cb;
+  }
+
+  function closeCropModal() {
+    var modal = document.getElementById("crop-modal");
+    if (modal) modal.classList.remove("open");
+    if (cropper) { cropper.destroy(); cropper = null; }
+    cropCallback = null;
+  }
+
+  function attachCropModalEvents() {
+    var cancelBtn = document.getElementById("crop-cancel");
+    var confirmBtn = document.getElementById("crop-confirm");
+    if (cancelBtn) cancelBtn.addEventListener("click", closeCropModal);
+    if (confirmBtn) {
+      confirmBtn.addEventListener("click", function () {
+        if (!cropper || !cropCallback) return;
+        var cb = cropCallback;
+        cropper.getCroppedCanvas({ maxWidth: 1200, maxHeight: 1200 }).toBlob(function (blob) {
+          closeCropModal();
+          cb(blob);
+        }, "image/jpeg", 0.9);
+      });
+    }
   }
 
   function handleCoverUpload(file) {
@@ -1071,6 +1245,15 @@
             '<button type="button" class="type-option" data-type="payment">💸 Payment</button>' +
           '</div>' +
         '</div>' +
+        '<div class="crop-modal" id="crop-modal">' +
+          '<div class="crop-modal-inner">' +
+            '<div class="crop-image-wrap"><img id="crop-image" alt="" /></div>' +
+            '<div class="crop-actions">' +
+              '<button type="button" class="pill pill-ghost" id="crop-cancel">Cancel</button>' +
+              '<button type="button" class="pill pill-solid" id="crop-confirm">Use photo</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
       '</div>'
     );
   }
@@ -1089,7 +1272,7 @@
     if (item.type === "song") {
       extra =
         '<div class="item-extra">' +
-          '<label class="file-btn">Upload an mp3<input type="file" accept="audio/*" data-song-upload="' + item.id + '" hidden /></label>' +
+          '<label class="file-btn">Upload an mp3 or wav<input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/wave,audio/ogg,audio/mp4,audio/x-m4a,.mp3,.wav,.ogg,.m4a" data-song-upload="' + item.id + '" hidden /></label>' +
           (item.url === "uploading" ? '<span class="field-hint">Uploading…</span>' : "") +
           (item.url && item.url !== "uploading" ? '<audio controls src="' + item.url + '" class="item-audio"></audio>' : "") +
         '</div>';
@@ -1124,6 +1307,15 @@
   function renderItemsList() {
     var container = document.getElementById("items-list");
     if (!container) return;
+
+    // FLIP animation: remember where each row currently sits before the
+    // DOM gets rebuilt, so we can smoothly animate it into its new spot
+    // instead of it just jumping there instantly.
+    var firstRects = {};
+    Array.prototype.forEach.call(container.querySelectorAll("[data-item-id]"), function (el) {
+      firstRects[el.getAttribute("data-item-id")] = el.getBoundingClientRect();
+    });
+
     var html = "";
     CONTENT_TYPES.forEach(function (typeDef) {
       var itemsOfType = draft.items.filter(function (it) { return it.type === typeDef.key; });
@@ -1134,6 +1326,26 @@
       });
     });
     container.innerHTML = html || '<p class="empty-hint">Nothing yet — tap + to add a social, link, song, and more.</p>';
+
+    Array.prototype.forEach.call(container.querySelectorAll("[data-item-id]"), function (el) {
+      var id = el.getAttribute("data-item-id");
+      var first = firstRects[id];
+      if (first) {
+        var last = el.getBoundingClientRect();
+        var deltaY = first.top - last.top;
+        if (Math.abs(deltaY) > 1) {
+          el.style.transition = "none";
+          el.style.transform = "translateY(" + deltaY + "px)";
+          requestAnimationFrame(function () {
+            el.style.transition = "transform 220ms ease";
+            el.style.transform = "translateY(0)";
+          });
+        }
+      } else if (id === lastAddedItemId) {
+        el.classList.add("pop-in");
+      }
+    });
+    lastAddedItemId = null;
   }
 
   function attachItemsListEvents() {
@@ -1150,7 +1362,8 @@
     container.addEventListener("change", function (e) {
       var t = e.target;
       if (t.matches("input[data-icon-upload]") && t.files && t.files[0]) {
-        handleIconUpload(t.getAttribute("data-icon-upload"), t.files[0]);
+        var iconId = t.getAttribute("data-icon-upload");
+        openCropModal(t.files[0], 1, function (blob) { handleIconUpload(iconId, blob); });
       }
       if (t.matches("input[data-song-upload]") && t.files && t.files[0]) {
         handleSongFileUpload(t.getAttribute("data-song-upload"), t.files[0]);
@@ -1159,7 +1372,7 @@
 
     container.addEventListener("click", function (e) {
       var removeBtn = e.target.closest("[data-remove]");
-      if (removeBtn) return removeItem(removeBtn.getAttribute("data-remove"));
+      if (removeBtn) { playTrashSound(); return removeItem(removeBtn.getAttribute("data-remove")); }
 
       var topBtn = e.target.closest("[data-top]");
       if (topBtn) return moveToTop(topBtn.getAttribute("data-top"));
@@ -1184,16 +1397,18 @@
   }
 
   function attachCreatePageEvents() {
+    attachCropModalEvents();
+
     var coverInput = document.getElementById("cover-upload-input");
     if (coverInput) {
       coverInput.addEventListener("change", function () {
-        if (coverInput.files && coverInput.files[0]) handleCoverUpload(coverInput.files[0]);
+        if (coverInput.files && coverInput.files[0]) openCropModal(coverInput.files[0], 3, handleCoverUpload);
       });
     }
     var avatarInput = document.getElementById("avatar-upload-input");
     if (avatarInput) {
       avatarInput.addEventListener("change", function () {
-        if (avatarInput.files && avatarInput.files[0]) handleAvatarUpload(avatarInput.files[0]);
+        if (avatarInput.files && avatarInput.files[0]) openCropModal(avatarInput.files[0], 1, handleAvatarUpload);
       });
     }
 
@@ -1276,14 +1491,20 @@
           '<h1 class="title">My Bio!</h1>' +
           '<p class="subtitle">Build a home for every link, song, and social you&#39;ve got — then share one address.</p>' +
           '<div class="cta-row">' +
-            '<a href="/create" class="pill pill-solid" data-link>Get your bio started</a>' +
+            (myBioUsername
+              ? '<a href="/@' + encodeURIComponent(myBioUsername) + '" class="pill pill-solid" data-link>My Bio!</a>'
+              : '<a href="/create" class="pill pill-solid" data-link>Get your bio started</a>') +
+            '<button type="button" class="pill pill-ghost" disabled title="Coming soon">🛂 Redeem / Premium — Under Development</button>' +
             '<a href="/search" class="pill pill-outline" data-link>See other bios</a>' +
           '</div>' +
         '</main>' +
         '<footer class="footer">' +
-          '<span>© 2026 Ajaxx</span>' +
+          '<span>© ' + new Date().getFullYear() + ' Ajaxx</span>' +
           '<span class="dot">·</span>' +
           '<a href="https://instagram.com/edd_00z" target="_blank" rel="noreferrer">@edd_00z</a>' +
+          '<span class="dot">·</span>' +
+          '<span class="visitor-eye" aria-hidden="true">👁️</span>' +
+          '<span>Visitor: <span id="visitor-count">' + (visitorCount == null ? "…" : visitorCount) + '</span></span>' +
         '</footer>' +
         adminPanelHtml() +
       '</div>'
@@ -1595,6 +1816,7 @@
 
   render();
   scheduleFlicker();
+  bumpVisitorCount();
 })();
 </script>
 </body>
