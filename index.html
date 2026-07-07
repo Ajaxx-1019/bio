@@ -60,6 +60,11 @@
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    background: var(--bg);
+    overscroll-behavior: none;
+  }
+  body {
+    overscroll-behavior: none;
   }
   * { box-sizing: border-box; }
 
@@ -396,6 +401,23 @@
   .type-option { display: block; width: 100%; text-align: left; padding: 14px 12px; border: none; background: none; font-family: inherit; font-size: 14px; color: #14141a; border-radius: 12px; cursor: pointer; }
   .type-option:hover { background: #f3f3f5; }
 
+  .platform-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px 8px 4px; }
+  .platform-option {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    border: none; background: none; cursor: pointer; font-family: inherit;
+    padding: 10px 4px; border-radius: 12px;
+  }
+  .platform-option:hover { background: #f3f3f5; }
+  .platform-circle {
+    width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; color: #fff; font-weight: 700; font-size: 13px;
+  }
+  .platform-label { font-size: 11px; color: #45454f; }
+  .preset-icon {
+    display: flex; align-items: center; justify-content: center; color: #fff;
+    font-weight: 700; font-size: 11px;
+  }
+
   .cover-upload {
     display: flex; align-items: center; justify-content: center; height: 84px; border-radius: 12px;
     background: #f3f3f5 center/cover no-repeat; border: 1px dashed #d8d8de; cursor: pointer;
@@ -419,14 +441,14 @@
   .small-pill { padding: 6px 12px; font-size: 11px; flex-shrink: 0; }
 
   .crop-modal {
-    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.92); z-index: 600;
+    position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); z-index: 600;
     display: flex; align-items: center; justify-content: center;
     opacity: 0; pointer-events: none; transition: opacity 200ms ease;
-    padding: 20px;
+    padding: 20px; overflow-y: auto;
   }
   .crop-modal.open { opacity: 1; pointer-events: auto; }
-  .crop-modal-inner { background: #fff; border-radius: 16px; padding: 16px; width: 100%; max-width: 400px; }
-  .crop-image-wrap { height: 320px; overflow: hidden; margin-bottom: 14px; background: #000; border-radius: 8px; }
+  .crop-modal-inner { background: #fff; border-radius: 16px; padding: 16px; width: 100%; max-width: 380px; max-height: 90vh; overflow-y: auto; margin: auto; }
+  .crop-image-wrap { height: 280px; overflow: hidden; margin-bottom: 14px; background: #000; border-radius: 8px; }
   .crop-image-wrap img { display: block; max-width: 100%; }
   .crop-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
@@ -723,42 +745,6 @@
     appId: "1:336840258366:web:4ee745d77aeb357eaef26f",
     measurementId: "G-PF2XV8MHFB"
   };
-  // ---------- on-screen debug log ----------
-  // Survives the full page reload that a redirect sign-in causes, by
-  // stashing lines in localStorage. Tap the log to clear it.
-  function debugLog(msg) {
-    console.log(msg);
-    try {
-      var logs = JSON.parse(localStorage.getItem("mybio-debug-log") || "[]");
-      logs.push(new Date().toLocaleTimeString() + " — " + msg);
-      if (logs.length > 40) logs = logs.slice(-40);
-      localStorage.setItem("mybio-debug-log", JSON.stringify(logs));
-    } catch (e) {}
-    renderDebugLog();
-  }
-  function renderDebugLog() {
-    var logs = [];
-    try { logs = JSON.parse(localStorage.getItem("mybio-debug-log") || "[]"); } catch (e) {}
-    if (!logs.length) return;
-    var el = document.getElementById("debug-log");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "debug-log";
-      el.style.cssText =
-        "position:fixed;bottom:0;left:0;right:0;max-height:35vh;overflow:auto;" +
-        "background:rgba(0,0,0,0.92);color:#7CFC7C;font-family:monospace;font-size:10px;" +
-        "padding:8px;z-index:99999;white-space:pre-wrap;line-height:1.5;";
-      el.addEventListener("click", function () {
-        localStorage.removeItem("mybio-debug-log");
-        el.remove();
-      });
-      document.body.appendChild(el);
-    }
-    el.textContent = logs.join("\n") + "\n(tap to clear)";
-    el.scrollTop = el.scrollHeight;
-  }
-  renderDebugLog(); // show any lines that survived a redirect reload
-  debugLog("App script started. path=" + window.location.pathname + " origin=" + window.location.origin);
 
   firebase.initializeApp(firebaseConfig);
   var auth = firebase.auth();
@@ -819,31 +805,17 @@
   }
 
   function signInWithGoogle() {
-    debugLog("Sign-in button tapped. Trying popup sign-in...");
     var provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider).then(function (result) {
-      debugLog("Popup sign-in OK: " + (result && result.user ? result.user.email : "?"));
-    }).catch(function (err) {
-      debugLog("Popup sign-in failed: " + (err && err.code) + " " + (err && err.message) + " — trying redirect instead...");
+    auth.signInWithPopup(provider).catch(function (err) {
       auth.signInWithRedirect(provider).catch(function (err2) {
-        debugLog("Redirect fallback also failed: " + (err2 && err2.code) + " " + (err2 && err2.message));
+        alert("Sign-in failed: " + (err2 && err2.message ? err2.message : err2) + (err2 && err2.code ? " (" + err2.code + ")" : ""));
       });
     });
   }
 
-  debugLog("Checking for a pending redirect result...");
   // Surfaces the exact Firebase error on the phone itself (no devtools needed).
-  // Common causes: this origin isn't in Authentication -> Settings ->
-  // Authorized domains, or Google sign-in isn't enabled under Sign-in method.
-  auth.getRedirectResult().then(function (result) {
-    if (result && result.user) {
-      debugLog("Redirect result OK. Signed in as " + result.user.email);
-    } else {
-      debugLog("Redirect result: no pending sign-in (normal unless you just tapped the button).");
-    }
-  }).catch(function (err) {
+  auth.getRedirectResult().catch(function (err) {
     console.error("Google sign-in failed:", err);
-    debugLog("Redirect result ERROR: " + (err && err.code) + " " + (err && err.message));
     alert("Sign-in failed: " + (err && err.message ? err.message : "unknown error") + (err && err.code ? " (" + err.code + ")" : ""));
   });
 
@@ -852,7 +824,6 @@
   }
 
   auth.onAuthStateChanged(function (user) {
-    debugLog("onAuthStateChanged fired. user=" + (user ? user.email : "null"));
     currentUser = user
       ? { uid: user.uid, name: user.displayName, email: user.email, picture: user.photoURL }
       : null;
@@ -1032,11 +1003,47 @@
 
   var lastAddedItemId = null;
 
+  // Real live follower counts / auto profile-picture fetching from Instagram,
+  // TikTok, X, etc. isn't something this can do without paid third-party APIs
+  // or official developer access from each platform — so these are presets
+  // (icon + name) the person fills in themselves, same as any Linktree-style tool.
+  var SOCIAL_PLATFORMS = {
+    instagram: { name: "Instagram", color: "#E1306C", glyph: "IG" },
+    x: { name: "X", color: "#000000", glyph: "X" },
+    tiktok: { name: "TikTok", color: "#010101", glyph: "TT" },
+    facebook: { name: "Facebook", color: "#1877F2", glyph: "f" },
+    threads: { name: "Threads", color: "#000000", glyph: "@" },
+    spotify: { name: "Spotify", color: "#1DB954", glyph: "♫" }
+  };
+
   function addItem(type) {
     var item = { id: genId(), type: type, icon: null, label: "", url: "" };
     draft.items.push(item);
     lastAddedItemId = item.id;
     renderItemsList();
+  }
+
+  function addSocialItem(platformKey) {
+    var p = SOCIAL_PLATFORMS[platformKey];
+    if (!p) return;
+    var item = { id: genId(), type: "social", icon: "preset:" + platformKey, label: p.name, url: "" };
+    draft.items.push(item);
+    lastAddedItemId = item.id;
+    renderItemsList();
+  }
+
+  // Shared by the create-page item rows and the public profile display, so
+  // preset platform icons look the same as uploaded ones everywhere.
+  function renderIconHtml(item, sizeClass) {
+    if (item.icon && item.icon.indexOf("preset:") === 0) {
+      var p = SOCIAL_PLATFORMS[item.icon.slice(7)];
+      if (p) {
+        return '<div class="' + sizeClass + ' preset-icon" style="background:' + p.color + '">' + p.glyph + '</div>';
+      }
+    }
+    if (item.icon === "uploading") return '<span class="item-icon-placeholder">…</span>';
+    if (item.icon) return '<img src="' + item.icon + '" class="' + sizeClass + '" alt="" />';
+    return '<span class="item-icon-placeholder">＋</span>';
   }
 
   function removeItem(id) {
@@ -1093,6 +1100,10 @@
     var okExt = /\.(mp3|wav|ogg|m4a)$/i.test(file.name);
     if (!okType && !okExt) {
       alert("Please choose an mp3, wav, ogg, or m4a file.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert("That song is " + (file.size / (1024 * 1024)).toFixed(1) + "MB — please keep it under 5MB.");
       return;
     }
     var item = draft.items.find(function (it) { return it.id === id; });
@@ -1302,6 +1313,25 @@
             '<button type="button" class="type-option" data-type="payment">💸 Payment</button>' +
           '</div>' +
         '</div>' +
+        '<div class="type-picker" id="social-picker">' +
+          '<div class="type-picker-sheet">' +
+            '<div class="type-picker-header">' +
+              '<span>Choose a platform</span>' +
+              '<button type="button" class="icon-btn" id="close-social-picker">×</button>' +
+            '</div>' +
+            '<div class="platform-grid">' +
+              Object.keys(SOCIAL_PLATFORMS).map(function (key) {
+                var p = SOCIAL_PLATFORMS[key];
+                return (
+                  '<button type="button" class="platform-option" data-platform="' + key + '">' +
+                    '<span class="platform-circle" style="background:' + p.color + '">' + p.glyph + '</span>' +
+                    '<span class="platform-label">' + p.name + '</span>' +
+                  '</button>'
+                );
+              }).join("") +
+            '</div>' +
+          '</div>' +
+        '</div>' +
         '<div class="crop-modal" id="crop-modal">' +
           '<div class="crop-modal-inner">' +
             '<div class="crop-image-wrap"><img id="crop-image" alt="" /></div>' +
@@ -1316,14 +1346,7 @@
   }
 
   function itemRowHtml(item, idx, total) {
-    var iconPreview;
-    if (item.icon === "uploading") {
-      iconPreview = '<span class="item-icon-placeholder">…</span>';
-    } else if (item.icon) {
-      iconPreview = '<img src="' + item.icon + '" class="item-icon-preview" alt="" />';
-    } else {
-      iconPreview = '<span class="item-icon-placeholder">＋</span>';
-    }
+    var iconPreview = renderIconHtml(item, "item-icon-preview");
 
     var extra = "";
     if (item.type === "song") {
@@ -1347,7 +1370,7 @@
         '</label>' +
         '<div class="item-fields">' +
           '<input type="text" placeholder="Label (e.g. Instagram)" value="' + escapeHtml(item.label) + '" data-field="label" data-item-id="' + item.id + '" />' +
-          '<input type="text" placeholder="https://..." value="' + escapeHtml(item.url) + '" data-field="url" data-item-id="' + item.id + '" />' +
+          (item.type === "song" ? "" : '<input type="text" placeholder="https://..." value="' + escapeHtml(item.url) + '" data-field="url" data-item-id="' + item.id + '" />') +
           extra +
         '</div>' +
         '<div class="item-controls">' +
@@ -1499,8 +1522,28 @@
         if (e.target === picker) picker.classList.remove("open");
         var opt = e.target.closest("[data-type]");
         if (opt) {
-          addItem(opt.getAttribute("data-type"));
+          var type = opt.getAttribute("data-type");
           picker.classList.remove("open");
+          if (type === "social") {
+            var socialPicker = document.getElementById("social-picker");
+            if (socialPicker) socialPicker.classList.add("open");
+          } else {
+            addItem(type);
+          }
+        }
+      });
+    }
+
+    var socialPicker = document.getElementById("social-picker");
+    var closeSocialPicker = document.getElementById("close-social-picker");
+    if (closeSocialPicker && socialPicker) closeSocialPicker.addEventListener("click", function () { socialPicker.classList.remove("open"); });
+    if (socialPicker) {
+      socialPicker.addEventListener("click", function (e) {
+        if (e.target === socialPicker) socialPicker.classList.remove("open");
+        var platBtn = e.target.closest("[data-platform]");
+        if (platBtn) {
+          addSocialItem(platBtn.getAttribute("data-platform"));
+          socialPicker.classList.remove("open");
         }
       });
     }
@@ -1747,7 +1790,7 @@
 
   function profileItemHtml(item) {
     var icon = item.icon
-      ? '<img src="' + item.icon + '" class="profile-item-icon" alt="" />'
+      ? renderIconHtml(item, "profile-item-icon")
       : '<div class="profile-item-icon profile-item-icon-placeholder"></div>';
 
     if (item.type === "song") {
