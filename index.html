@@ -17,6 +17,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore-compat.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 
 <!-- Real "no address bar at all" only exists once this is installed as an app
      (Add to Home Screen) — a website can't force that in a normal browser tab,
@@ -106,8 +107,10 @@
     transition: transform 80ms ease;
   }
 
-  /* subtle paper grain + vignette — pure CSS, no image assets, cheap to render */
-  body::before {
+  /* subtle paper grain + vignette — pure CSS, no image assets, cheap to render.
+     Scoped to only appear while the vintage home page is showing (:has), so
+     it doesn't wash out the plain white Create/Profile pages. */
+  body:has(.page.home)::before {
     content: "";
     position: fixed;
     inset: 0;
@@ -117,7 +120,7 @@
     pointer-events: none;
     z-index: 4;
   }
-  body::after {
+  body:has(.page.home)::after {
     content: "";
     position: fixed;
     inset: 0;
@@ -393,7 +396,7 @@
   .type-picker.open { opacity: 1; pointer-events: auto; }
   .type-picker-sheet {
     background: #fff; border-radius: 18px; width: 100%; max-width: 380px;
-    padding: 8px 12px 16px; max-height: 80vh; overflow-y: auto;
+    padding: 8px 12px 16px; max-height: 80vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
     transform: scale(0.94); transition: transform 200ms ease;
   }
   .type-picker.open .type-picker-sheet { transform: scale(1); }
@@ -447,15 +450,15 @@
     padding: 20px; overflow-y: auto;
   }
   .crop-modal.open { opacity: 1; pointer-events: auto; }
-  .crop-modal-inner { background: #fff; border-radius: 16px; padding: 16px; width: 100%; max-width: 380px; max-height: 90vh; overflow-y: auto; margin: auto; }
+  .crop-modal-inner { background: #fff; border-radius: 16px; padding: 16px; width: 100%; max-width: 380px; max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch; margin: auto; }
   .crop-image-wrap { height: 280px; overflow: hidden; margin-bottom: 14px; background: #000; border-radius: 8px; }
   .crop-image-wrap img { display: block; max-width: 100%; }
   .crop-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
   .profile-cover { height: 160px; width: 100%; }
   .profile-body { padding-top: 0; }
-  .profile-avatar-row { margin-top: -36px; margin-bottom: 12px; }
-  .profile-avatar { width: 72px; height: 72px; border-radius: 50%; border: 4px solid #fff; object-fit: cover; display: block; background: #f3f3f5; }
+  .profile-avatar-row { margin-top: -48px; margin-bottom: 12px; }
+  .profile-avatar { width: 100px; height: 100px; border-radius: 50%; border: 4px solid #fff; object-fit: cover; display: block; background: #f3f3f5; }
   .profile-avatar-placeholder { display: flex; align-items: center; justify-content: center; font-size: 28px; }
   .profile-name { font-size: 20px; font-weight: 800; margin: 0 0 2px; }
   .profile-username { color: #9a9aa5; font-size: 13px; margin: 0 0 12px; }
@@ -466,6 +469,7 @@
   .profile-item-link-inner { display: flex; align-items: center; gap: 12px; flex: 1; text-decoration: none; color: inherit; min-width: 0; }
   .profile-item-icon { width: 36px; height: 36px; border-radius: 10px; object-fit: cover; flex-shrink: 0; background: #f3f3f5; }
   .profile-item-label { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .profile-item-url { font-size: 11px; color: #9a9aa5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; display: block; }
   .profile-item-empty { font-size: 12px; color: #9a9aa5; }
   .profile-item-body { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 
@@ -964,6 +968,8 @@
     { key: "game", label: "Game" },
     { key: "payment", label: "Payment" }
   ];
+
+  var COLOR_PRESETS = ["#5b4fe8", "#e1306c", "#1db954", "#f59e0b", "#ef4444", "#14b8a6", "#0ea5e9", "#111827"];
 
   var draft = { username: "", displayName: "", bio: "", avatar: null, cover: null, items: [] };
   var draftLoaded = false;
@@ -1655,9 +1661,10 @@
   }
 
   function profileContentHtml(username, data, isOwner) {
+    var accent = data.color || "#5b4fe8";
     var coverStyle = data.cover
       ? 'background-image:url(' + data.cover + ');background-size:cover;background-position:center;'
-      : 'background:linear-gradient(135deg,#5b4fe8,#8a7dff);';
+      : 'background:' + accent + ';';
 
     var avatarHtml = data.avatar
       ? '<img src="' + data.avatar + '" class="profile-avatar" alt="" />'
@@ -1672,12 +1679,50 @@
       itemsOfType.forEach(function (item) { itemsHtml += profileItemHtml(item); });
     });
 
+    var colorPickerHtml = isOwner
+      ? '<div class="crop-modal" id="color-picker-modal">' +
+          '<div class="crop-modal-inner">' +
+            '<div class="type-picker-header"><span>Choose a color</span><button type="button" class="icon-btn" id="close-color-picker">×</button></div>' +
+            '<div class="color-grid">' +
+              COLOR_PRESETS.map(function (c) {
+                return '<button type="button" class="color-swatch' + (c === accent ? " selected" : "") + '" data-color="' + c + '" style="background:' + c + '" aria-label="' + c + '"></button>';
+              }).join("") +
+              '<input type="color" id="custom-color-input" value="' + accent + '" aria-label="Custom color" />' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      : "";
+
+    var shareHtml =
+      '<div class="crop-modal" id="share-modal">' +
+        '<div class="crop-modal-inner share-card">' +
+          '<button type="button" class="icon-btn small share-close" id="close-share-modal" aria-label="Close">×</button>' +
+          '<div class="share-banner" style="' + coverStyle + '">' +
+            (data.avatar
+              ? '<img src="' + data.avatar + '" class="share-avatar" alt="" />'
+              : '<div class="share-avatar share-avatar-placeholder">🙂</div>') +
+          '</div>' +
+          '<div class="share-name">' + escapeHtml(data.displayName || username) + '</div>' +
+          '<div class="share-qr"><canvas id="qr-canvas"></canvas></div>' +
+          '<div class="share-url">mybio.zone.id/@' + escapeHtml(username) + '</div>' +
+          '<div class="crop-actions share-actions">' +
+            '<button type="button" class="pill pill-ghost" id="copy-link-btn">Copy link</button>' +
+            '<button type="button" class="pill pill-solid" id="download-share-btn">Download</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
     return (
-      '<div class="page create profile-page">' +
+      '<div class="page create profile-page" style="--profile-accent:' + accent + '">' +
         '<header class="topbar create-topbar">' +
           '<a href="/" class="icon-btn" data-link aria-label="Back">←</a>' +
           '<span class="create-title">@' + escapeHtml(username) + '</span>' +
-          (isOwner ? '<a href="/create" class="icon-btn" data-link aria-label="Edit">✏️</a>' : '<span style="width:40px;"></span>') +
+          '<div class="profile-topbar-actions">' +
+            '<button type="button" class="icon-btn small" disabled title="Premium — coming soon">🔒</button>' +
+            (isOwner ? '<button type="button" class="icon-btn small" id="open-color-picker" aria-label="Change color">🎨</button>' : "") +
+            '<button type="button" class="icon-btn small" id="open-share-popup" aria-label="Share">🔗</button>' +
+            (isOwner ? '<a href="/create" class="icon-btn small" data-link aria-label="Edit">✏️</a>' : "") +
+          '</div>' +
         '</header>' +
         '<div class="profile-cover" style="' + coverStyle + '"></div>' +
         '<div class="create-body profile-body">' +
@@ -1687,8 +1732,146 @@
           (data.bio ? '<p class="profile-bio">' + escapeHtml(data.bio) + '</p>' : "") +
           itemsHtml +
         '</div>' +
+        colorPickerHtml +
+        shareHtml +
       '</div>'
     );
+  }
+
+  function saveProfileColor(username, color) {
+    db.collection("bios").doc(username).update({ color: color }).then(function () {
+      navigate("/@" + username);
+    }).catch(function (err) {
+      alert("Couldn't save color: " + (err && err.message ? err.message : err));
+    });
+  }
+
+  function loadImageForCanvas(url, cb) {
+    if (!url) { cb(null); return; }
+    var img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = function () { cb(img); };
+    img.onerror = function () { cb(null); };
+    img.src = url;
+  }
+
+  function attachProfilePageEvents(username, data, isOwner) {
+    var accent = data.color || "#5b4fe8";
+    var profileUrl = "https://mybio.zone.id/@" + username;
+
+    // ---- color picker (owner only) ----
+    if (isOwner) {
+      var openColor = document.getElementById("open-color-picker");
+      var colorModal = document.getElementById("color-picker-modal");
+      var closeColor = document.getElementById("close-color-picker");
+      if (openColor && colorModal) openColor.addEventListener("click", function () { colorModal.classList.add("open"); });
+      if (closeColor && colorModal) closeColor.addEventListener("click", function () { colorModal.classList.remove("open"); });
+      if (colorModal) {
+        colorModal.addEventListener("click", function (e) {
+          if (e.target === colorModal) colorModal.classList.remove("open");
+          var swatch = e.target.closest("[data-color]");
+          if (swatch) saveProfileColor(username, swatch.getAttribute("data-color"));
+        });
+      }
+      var customColor = document.getElementById("custom-color-input");
+      if (customColor) customColor.addEventListener("change", function () { saveProfileColor(username, customColor.value); });
+    }
+
+    // ---- share / QR popup ----
+    var openShare = document.getElementById("open-share-popup");
+    var shareModal = document.getElementById("share-modal");
+    var closeShare = document.getElementById("close-share-modal");
+    if (openShare && shareModal) {
+      openShare.addEventListener("click", function () {
+        shareModal.classList.add("open");
+        var canvas = document.getElementById("qr-canvas");
+        if (canvas && window.QRCode) {
+          QRCode.toCanvas(canvas, profileUrl, { width: 180, margin: 1 }, function (err) {
+            if (err) console.error(err);
+          });
+        }
+      });
+    }
+    if (closeShare && shareModal) closeShare.addEventListener("click", function () { shareModal.classList.remove("open"); });
+    if (shareModal) {
+      shareModal.addEventListener("click", function (e) { if (e.target === shareModal) shareModal.classList.remove("open"); });
+    }
+
+    var copyBtn = document.getElementById("copy-link-btn");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function () {
+        navigator.clipboard.writeText(profileUrl).catch(function () {});
+        copyBtn.textContent = "Copied!";
+        setTimeout(function () { copyBtn.textContent = "Copy link"; }, 1500);
+      });
+    }
+
+    var downloadBtn = document.getElementById("download-share-btn");
+    if (downloadBtn) {
+      downloadBtn.addEventListener("click", function () {
+        var qrCanvas = document.getElementById("qr-canvas");
+        loadImageForCanvas(data.avatar, function (avatarImg) {
+          var out = document.createElement("canvas");
+          out.width = 480;
+          out.height = 640;
+          var ctx = out.getContext("2d");
+
+          ctx.fillStyle = accent;
+          ctx.fillRect(0, 0, out.width, out.height);
+
+          var cx = out.width / 2, cy = 160, r = 70;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.clip();
+          if (avatarImg) {
+            ctx.drawImage(avatarImg, cx - r, cy - r, r * 2, r * 2);
+          } else {
+            ctx.fillStyle = "rgba(255,255,255,0.25)";
+            ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+          }
+          ctx.restore();
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.fillStyle = "#fff";
+          ctx.font = "bold 28px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(data.displayName || username, out.width / 2, 270);
+
+          var qrBoxSize = 220;
+          var qrBoxX = (out.width - qrBoxSize) / 2;
+          var qrBoxY = 310;
+          ctx.fillStyle = "#fff";
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 16);
+          else ctx.rect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize);
+          ctx.fill();
+          if (qrCanvas) {
+            var pad = 20;
+            ctx.drawImage(qrCanvas, qrBoxX + pad, qrBoxY + pad, qrBoxSize - pad * 2, qrBoxSize - pad * 2);
+          }
+
+          ctx.fillStyle = "#fff";
+          ctx.font = "16px monospace";
+          ctx.fillText("mybio.zone.id/@" + username, out.width / 2, qrBoxY + qrBoxSize + 40);
+
+          out.toBlob(function (blob) {
+            if (!blob) { alert("Couldn't generate the image — the uploaded photo host may be blocking downloads."); return; }
+            var a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "mybio-" + username + ".png";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+          });
+        });
+      });
+    }
   }
 
   function renderProfileRoute(app, path) {
@@ -1712,6 +1895,7 @@
       var isOwner = !!currentUser && currentUser.uid === data.uid;
       app.innerHTML = profileContentHtml(username, data, isOwner);
       attachCommonListeners();
+      attachProfilePageEvents(username, data, isOwner);
     }).catch(function (err) {
       console.error(err);
       alert("Load failed: " + (err && err.message ? err.message : err) + (err && err.code ? " (" + err.code + ")" : ""));
@@ -1793,6 +1977,8 @@
       ? renderIconHtml(item, "profile-item-icon")
       : '<div class="profile-item-icon profile-item-icon-placeholder"></div>';
 
+    var urlLine = item.url ? '<span class="profile-item-url">' + escapeHtml(item.url) + '</span>' : "";
+
     if (item.type === "song") {
       return (
         '<div class="profile-item">' +
@@ -1810,7 +1996,10 @@
         '<div class="profile-item">' +
           '<a class="profile-item-link-inner" href="' + escapeHtml(item.url || "#") + '" target="_blank" rel="noreferrer">' +
             icon +
-            '<span class="profile-item-label">' + escapeHtml(item.label || item.url || "Untitled") + '</span>' +
+            '<span class="profile-item-body">' +
+              '<span class="profile-item-label">' + escapeHtml(item.label || "Untitled") + '</span>' +
+              urlLine +
+            '</span>' +
           '</a>' +
           '<button type="button" class="icon-btn small" data-copy-static="' + escapeHtml(item.url || "") + '" aria-label="Copy">⧉</button>' +
         '</div>'
@@ -1820,7 +2009,10 @@
     return (
       '<a class="profile-item profile-item-link" href="' + escapeHtml(item.url || "#") + '" target="_blank" rel="noreferrer">' +
         icon +
-        '<span class="profile-item-label">' + escapeHtml(item.label || item.url || "Untitled") + '</span>' +
+        '<span class="profile-item-body">' +
+          '<span class="profile-item-label">' + escapeHtml(item.label || "Untitled") + '</span>' +
+          urlLine +
+        '</span>' +
       '</a>'
     );
   }
