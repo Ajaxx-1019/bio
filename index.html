@@ -17,7 +17,6 @@
 <script src="https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore-compat.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 
 <!-- Real "no address bar at all" only exists once this is installed as an app
      (Add to Home Screen) — a website can't force that in a normal browser tab,
@@ -210,7 +209,7 @@
   .topbar-actions { display: flex; align-items: center; gap: 12px; }
 
   .icon-btn {
-    width: 40px; height: 40px; border-radius: 50%;
+    width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
     border: 1px solid var(--border); background: var(--bg-soft); color: var(--text);
     display: flex; align-items: center; justify-content: center; cursor: pointer;
     transition: transform var(--transition), background var(--transition);
@@ -337,7 +336,10 @@
     background: #f3f3f5; border-color: #ececef; color: #14141a; text-decoration: none; font-size: 15px;
     width: 34px; height: 34px;
   }
-  .page.create .create-title { font-weight: 700; font-size: 14px; }
+  .page.create .create-title {
+    font-weight: 700; font-size: 14px; flex: 1; min-width: 0; text-align: center;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 8px;
+  }
   .page.create .pill-solid { background: #5b4fe8; color: #fff; box-shadow: none; }
   .page.create .pill-solid:hover { background: #4a3fd1; transform: none; box-shadow: none; }
 
@@ -455,20 +457,27 @@
   .crop-image-wrap img { display: block; max-width: 100%; }
   .crop-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
-  .profile-topbar-actions { display: flex; align-items: center; gap: 6px; }
-  .profile-topbar-actions .icon-btn.small { width: 34px; height: 34px; font-size: 15px; text-decoration: none; }
-  .profile-topbar-actions .icon-btn.small:disabled { opacity: 0.4; cursor: default; }
+  .profile-topbar-actions {
+    display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center;
+    gap: 4px; flex-shrink: 0;
+  }
+  .profile-topbar-actions .icon-btn.small { width: 32px; height: 32px; font-size: 14px; text-decoration: none; flex-shrink: 0; }
+  .profile-topbar-actions .icon-btn.small:disabled { opacity: 0.35; cursor: default; }
 
   .color-grid { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px 4px 4px; align-items: center; }
   .color-swatch {
-    width: 36px; height: 36px; border-radius: 50%; border: 2px solid transparent;
-    cursor: pointer; padding: 0;
+    width: 36px; height: 36px; min-width: 36px; min-height: 36px; flex-shrink: 0;
+    border-radius: 50%; border: 2px solid transparent;
+    cursor: pointer; padding: 0; -webkit-appearance: none; appearance: none;
   }
   .color-swatch.selected { border-color: #14141a; box-shadow: 0 0 0 2px #fff inset; }
   #custom-color-input {
-    width: 36px; height: 36px; border: none; border-radius: 50%; overflow: hidden;
-    cursor: pointer; padding: 0; background: none;
+    width: 36px; height: 36px; min-width: 36px; min-height: 36px; flex-shrink: 0;
+    border: none; padding: 0; cursor: pointer; background: none;
+    -webkit-appearance: none; appearance: none; clip-path: circle(50%);
   }
+  #custom-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+  #custom-color-input::-webkit-color-swatch { border: none; }
 
   /* ---------- share / QR card — matches the banner + big overlapping avatar look ---------- */
   .share-card { position: relative; padding: 0 0 20px; overflow: hidden; text-align: center; }
@@ -492,7 +501,7 @@
   .share-avatar-placeholder { display: flex; align-items: center; justify-content: center; font-size: 36px; }
   .share-name { margin-top: 64px; font-size: 20px; font-weight: 800; color: #14141a; }
   .share-qr { display: flex; justify-content: center; margin: 16px 0 8px; }
-  .share-qr canvas { border-radius: 12px; }
+  .share-qr img { border-radius: 12px; width: 180px; height: 180px; background: #fff; }
   .share-url { font-size: 12px; color: #9a9aa5; font-family: "Courier Prime", monospace; margin-bottom: 18px; }
   .share-actions { justify-content: center; padding: 0 20px; }
 
@@ -1734,6 +1743,9 @@
         '</div>'
       : "";
 
+    var profileUrl = "https://mybio.zone.id/@" + username;
+    var qrImgUrl = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" + encodeURIComponent(profileUrl);
+
     var shareHtml =
       '<div class="crop-modal" id="share-modal">' +
         '<div class="crop-modal-inner share-card">' +
@@ -1744,7 +1756,7 @@
               : '<div class="share-avatar share-avatar-placeholder">🙂</div>') +
           '</div>' +
           '<div class="share-name">' + escapeHtml(data.displayName || username) + '</div>' +
-          '<div class="share-qr"><canvas id="qr-canvas"></canvas></div>' +
+          '<div class="share-qr"><img id="qr-image" src="' + qrImgUrl + '" crossorigin="anonymous" alt="QR code" /></div>' +
           '<div class="share-url">mybio.zone.id/@' + escapeHtml(username) + '</div>' +
           '<div class="crop-actions share-actions">' +
             '<button type="button" class="pill pill-ghost" id="copy-link-btn">Copy link</button>' +
@@ -1823,15 +1835,7 @@
     var shareModal = document.getElementById("share-modal");
     var closeShare = document.getElementById("close-share-modal");
     if (openShare && shareModal) {
-      openShare.addEventListener("click", function () {
-        shareModal.classList.add("open");
-        var canvas = document.getElementById("qr-canvas");
-        if (canvas && window.QRCode) {
-          QRCode.toCanvas(canvas, profileUrl, { width: 180, margin: 1 }, function (err) {
-            if (err) console.error(err);
-          });
-        }
-      });
+      openShare.addEventListener("click", function () { shareModal.classList.add("open"); });
     }
     if (closeShare && shareModal) closeShare.addEventListener("click", function () { shareModal.classList.remove("open"); });
     if (shareModal) {
@@ -1850,65 +1854,74 @@
     var downloadBtn = document.getElementById("download-share-btn");
     if (downloadBtn) {
       downloadBtn.addEventListener("click", function () {
-        var qrCanvas = document.getElementById("qr-canvas");
+        downloadBtn.disabled = true;
+        var originalText = downloadBtn.textContent;
+        downloadBtn.textContent = "Preparing…";
+        var qrImgUrl = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" + encodeURIComponent(profileUrl);
+
         loadImageForCanvas(data.avatar, function (avatarImg) {
-          var out = document.createElement("canvas");
-          out.width = 480;
-          out.height = 640;
-          var ctx = out.getContext("2d");
+          loadImageForCanvas(qrImgUrl, function (qrImg) {
+            var out = document.createElement("canvas");
+            out.width = 480;
+            out.height = 640;
+            var ctx = out.getContext("2d");
 
-          ctx.fillStyle = accent;
-          ctx.fillRect(0, 0, out.width, out.height);
+            ctx.fillStyle = accent;
+            ctx.fillRect(0, 0, out.width, out.height);
 
-          var cx = out.width / 2, cy = 160, r = 70;
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(cx, cy, r, 0, Math.PI * 2);
-          ctx.closePath();
-          ctx.clip();
-          if (avatarImg) {
-            ctx.drawImage(avatarImg, cx - r, cy - r, r * 2, r * 2);
-          } else {
-            ctx.fillStyle = "rgba(255,255,255,0.25)";
-            ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-          }
-          ctx.restore();
-          ctx.strokeStyle = "#fff";
-          ctx.lineWidth = 5;
-          ctx.beginPath();
-          ctx.arc(cx, cy, r, 0, Math.PI * 2);
-          ctx.stroke();
+            var cx = out.width / 2, cy = 160, r = 70;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+            if (avatarImg) {
+              ctx.drawImage(avatarImg, cx - r, cy - r, r * 2, r * 2);
+            } else {
+              ctx.fillStyle = "rgba(255,255,255,0.25)";
+              ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+            }
+            ctx.restore();
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
 
-          ctx.fillStyle = "#fff";
-          ctx.font = "bold 28px sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText(data.displayName || username, out.width / 2, 270);
+            ctx.fillStyle = "#fff";
+            ctx.font = "bold 28px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(data.displayName || username, out.width / 2, 270);
 
-          var qrBoxSize = 220;
-          var qrBoxX = (out.width - qrBoxSize) / 2;
-          var qrBoxY = 310;
-          ctx.fillStyle = "#fff";
-          ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 16);
-          else ctx.rect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize);
-          ctx.fill();
-          if (qrCanvas) {
-            var pad = 20;
-            ctx.drawImage(qrCanvas, qrBoxX + pad, qrBoxY + pad, qrBoxSize - pad * 2, qrBoxSize - pad * 2);
-          }
+            var qrBoxSize = 220;
+            var qrBoxX = (out.width - qrBoxSize) / 2;
+            var qrBoxY = 310;
+            ctx.fillStyle = "#fff";
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 16);
+            else ctx.rect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize);
+            ctx.fill();
+            if (qrImg) {
+              var pad = 15;
+              ctx.drawImage(qrImg, qrBoxX + pad, qrBoxY + pad, qrBoxSize - pad * 2, qrBoxSize - pad * 2);
+            }
 
-          ctx.fillStyle = "#fff";
-          ctx.font = "16px monospace";
-          ctx.fillText("mybio.zone.id/@" + username, out.width / 2, qrBoxY + qrBoxSize + 40);
+            ctx.fillStyle = "#fff";
+            ctx.font = "16px monospace";
+            ctx.fillText("mybio.zone.id/@" + username, out.width / 2, qrBoxY + qrBoxSize + 40);
 
-          out.toBlob(function (blob) {
-            if (!blob) { alert("Couldn't generate the image — the uploaded photo host may be blocking downloads."); return; }
-            var a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = "mybio-" + username + ".png";
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
+            downloadBtn.disabled = false;
+            downloadBtn.textContent = originalText;
+
+            out.toBlob(function (blob) {
+              if (!blob) { alert("Couldn't generate the image — the uploaded photo host may be blocking downloads."); return; }
+              var a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = "mybio-" + username + ".png";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+            });
           });
         });
       });
