@@ -370,6 +370,8 @@
     width: 24px; height: 24px; border-radius: 50%; border: none; background: #5b4fe8; color: #fff;
     font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
   }
+  .section-move-controls { display: flex; gap: 4px; }
+  .section-move-controls .icon-btn.small { width: 22px; height: 22px; font-size: 10px; }
   .empty-hint { color: #9a9aa5; font-size: 13px; text-align: center; padding: 24px 0; }
 
   .item-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border: 1px solid #ececef; border-radius: 12px; margin-bottom: 8px; background: #fff; }
@@ -467,7 +469,7 @@
   .color-grid { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px 4px 4px; align-items: center; }
   .color-swatch {
     width: 36px; height: 36px; min-width: 36px; min-height: 36px; flex-shrink: 0;
-    border-radius: 50%; border: 2px solid transparent;
+    border-radius: 50%; border: 2px solid #e2e2e7;
     cursor: pointer; padding: 0; -webkit-appearance: none; appearance: none;
   }
   .color-swatch.selected { border-color: #14141a; box-shadow: 0 0 0 2px #fff inset; }
@@ -487,27 +489,27 @@
   }
   .share-banner {
     height: 170px; width: 100%; position: relative; border-radius: 16px 16px 0 0; overflow: hidden;
-    display: flex; align-items: flex-end; justify-content: center;
   }
   .share-banner-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .share-banner-overlay {
     position: absolute; inset: 0;
     background: linear-gradient(to bottom, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.6));
   }
+  .share-avatar-wrap { display: flex; justify-content: center; margin-top: -55px; position: relative; z-index: 2; }
   .share-avatar {
-    width: 110px; height: 110px; border-radius: 50%; border: 4px solid #fff;
-    object-fit: cover; position: relative; z-index: 1; margin-bottom: -55px; background: #f3f3f5;
+    width: 110px; height: 110px; border-radius: 50%; border: 4px solid #c9c9d1;
+    object-fit: cover; background: #f3f3f5;
   }
   .share-avatar-placeholder { display: flex; align-items: center; justify-content: center; font-size: 36px; }
-  .share-name { margin-top: 64px; font-size: 20px; font-weight: 800; color: #14141a; }
+  .share-name { margin-top: 12px; font-size: 20px; font-weight: 800; color: #14141a; }
   .share-qr { display: flex; justify-content: center; margin: 16px 0 8px; }
-  .share-qr img { border-radius: 12px; width: 180px; height: 180px; background: #fff; }
+  .share-qr img { border-radius: 12px; width: 180px; height: 180px; background: #fff; border: 1px solid #c9c9d1; }
   .share-url { font-size: 12px; color: #9a9aa5; font-family: "Courier Prime", monospace; margin-bottom: 18px; }
   .share-actions { justify-content: center; padding: 0 20px; }
   .share-card-dark { background: #0e0e12; }
   .share-card-dark .share-name { color: #fff; }
   .share-card-dark .share-url { color: #9a9aa5; }
-  .share-card-dark .share-avatar { border-color: #0e0e12; }
+  .share-card-dark .share-avatar { border-color: #c9c9d1; }
 
   /* ---------- profile dark theme (black chosen) — visible to every visitor ---------- */
   .profile-page.profile-dark { background: #0e0e12; color: #f2f2f5; }
@@ -542,6 +544,8 @@
   .profile-item-url { font-size: 11px; color: #9a9aa5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; display: block; }
   .profile-item-empty { font-size: 12px; color: #9a9aa5; }
   .profile-item-body { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+  .profile-bio-rule { height: 1px; background: #ececef; margin: 20px 0 6px; }
+  .profile-page.profile-dark .profile-bio-rule { background: rgba(255, 255, 255, 0.14); }
 
   @media (max-width: 480px) {
     .topbar { padding: 18px 20px; }
@@ -929,7 +933,7 @@
       ? { uid: user.uid, name: user.displayName, email: user.email, picture: user.photoURL }
       : null;
     draftLoaded = false;
-    draft = { username: "", displayName: "", bio: "", avatar: null, cover: null, items: [] };
+    draft = { username: "", displayName: "", bio: "", avatar: null, cover: null, items: [], sectionOrder: CONTENT_TYPES.map(function (t) { return t.key; }) };
     draftDocId = null;
     myBioUsername = null;
     render();
@@ -1068,7 +1072,7 @@
 
   var COLOR_PRESETS = ["#ffffff", "#000000"];
 
-  var draft = { username: "", displayName: "", bio: "", avatar: null, cover: null, items: [] };
+  var draft = { username: "", displayName: "", bio: "", avatar: null, cover: null, items: [], sectionOrder: CONTENT_TYPES.map(function (t) { return t.key; }) };
   var draftLoaded = false;
   var draftDocId = null; // username this draft was last saved under (lets us rename safely)
 
@@ -1086,7 +1090,8 @@
             bio: data.bio || "",
             avatar: data.avatar || null,
             cover: data.cover || null,
-            items: data.items || []
+            items: data.items || [],
+            sectionOrder: (data.sectionOrder && data.sectionOrder.length) ? data.sectionOrder : CONTENT_TYPES.map(function (t) { return t.key; })
           };
           draftDocId = uname;
         }
@@ -1184,6 +1189,25 @@
     var firstSameType = draft.items.findIndex(function (it) { return it.type === item.type; });
     if (firstSameType === -1) firstSameType = draft.items.length;
     draft.items.splice(firstSameType, 0, item);
+    renderItemsList();
+  }
+
+  function moveSection(key, dir) {
+    if (!draft.sectionOrder || !draft.sectionOrder.length) {
+      draft.sectionOrder = CONTENT_TYPES.map(function (t) { return t.key; });
+    }
+    var visibleKeys = draft.sectionOrder.filter(function (k) {
+      return draft.items.some(function (it) { return it.type === k; });
+    });
+    var idx = visibleKeys.indexOf(key);
+    var swapIdx = idx + dir;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= visibleKeys.length) return;
+    var other = visibleKeys[swapIdx];
+    var realA = draft.sectionOrder.indexOf(key);
+    var realB = draft.sectionOrder.indexOf(other);
+    var tmp = draft.sectionOrder[realA];
+    draft.sectionOrder[realA] = draft.sectionOrder[realB];
+    draft.sectionOrder[realB] = tmp;
     renderItemsList();
   }
 
@@ -1330,11 +1354,13 @@
         cover: draft.cover || null,
         items: draft.items || [],
         banned: existing.exists ? !!existing.data().banned : false,
+        color: existing.exists ? (existing.data().color || null) : null,
+        sectionOrder: draft.sectionOrder && draft.sectionOrder.length ? draft.sectionOrder : CONTENT_TYPES.map(function (t) { return t.key; }),
         createdAt: existing.exists ? existing.data().createdAt : firebase.firestore.FieldValue.serverTimestamp()
       };
 
       var batch = db.batch();
-      batch.set(bioRef, payload);
+      batch.set(bioRef, payload, { merge: true });
       if (draftDocId && draftDocId !== newUsername) {
         batch.delete(db.collection("bios").doc(draftDocId));
       }
@@ -1498,20 +1524,38 @@
     Array.prototype.forEach.call(container.querySelectorAll("[data-item-id]"), function (el) {
       firstRects[el.getAttribute("data-item-id")] = el.getBoundingClientRect();
     });
+    Array.prototype.forEach.call(container.querySelectorAll("[data-section-key]"), function (el) {
+      firstRects["section:" + el.getAttribute("data-section-key")] = el.getBoundingClientRect();
+    });
+
+    var order = (draft.sectionOrder && draft.sectionOrder.length) ? draft.sectionOrder : CONTENT_TYPES.map(function (t) { return t.key; });
+    var visibleKeys = order.filter(function (key) {
+      return draft.items.some(function (it) { return it.type === key; });
+    });
 
     var html = "";
-    CONTENT_TYPES.forEach(function (typeDef) {
-      var itemsOfType = draft.items.filter(function (it) { return it.type === typeDef.key; });
+    order.forEach(function (key) {
+      var typeDef = CONTENT_TYPES.find(function (t) { return t.key === key; });
+      if (!typeDef) return;
+      var itemsOfType = draft.items.filter(function (it) { return it.type === key; });
       if (!itemsOfType.length) return;
-      html += '<div class="section-divider"><span>' + typeDef.label + '</span></div>';
+      var vIdx = visibleKeys.indexOf(key);
+      html +=
+        '<div class="section-divider" data-section-key="' + key + '">' +
+          '<span>' + typeDef.label + '</span>' +
+          '<span class="section-move-controls">' +
+            '<button type="button" class="icon-btn small" data-move-section="' + key + ':-1"' + (vIdx === 0 ? " disabled" : "") + ' aria-label="Move section up">▲</button>' +
+            '<button type="button" class="icon-btn small" data-move-section="' + key + ':1"' + (vIdx === visibleKeys.length - 1 ? " disabled" : "") + ' aria-label="Move section down">▼</button>' +
+          '</span>' +
+        '</div>';
       itemsOfType.forEach(function (item, idx) {
         html += itemRowHtml(item, idx, itemsOfType.length);
       });
     });
     container.innerHTML = html || '<p class="empty-hint">Nothing yet — tap + to add a social, link, song, and more.</p>';
 
-    Array.prototype.forEach.call(container.querySelectorAll("[data-item-id]"), function (el) {
-      var id = el.getAttribute("data-item-id");
+    Array.prototype.forEach.call(container.querySelectorAll("[data-item-id], [data-section-key]"), function (el) {
+      var id = el.hasAttribute("data-item-id") ? el.getAttribute("data-item-id") : "section:" + el.getAttribute("data-section-key");
       var first = firstRects[id];
       if (first) {
         var last = el.getBoundingClientRect();
@@ -1554,6 +1598,12 @@
     });
 
     container.addEventListener("click", function (e) {
+      var moveSectionBtn = e.target.closest("[data-move-section]");
+      if (moveSectionBtn) {
+        var secParts = moveSectionBtn.getAttribute("data-move-section").split(":");
+        return moveSection(secParts[0], parseInt(secParts[1], 10));
+      }
+
       var removeBtn = e.target.closest("[data-remove]");
       if (removeBtn) { playTrashSound(); return removeItem(removeBtn.getAttribute("data-remove")); }
 
@@ -1768,9 +1818,12 @@
       : '<div class="profile-avatar profile-avatar-placeholder">🙂</div>';
 
     var items = data.items || [];
+    var sectionOrder = (data.sectionOrder && data.sectionOrder.length) ? data.sectionOrder : CONTENT_TYPES.map(function (t) { return t.key; });
     var itemsHtml = "";
-    CONTENT_TYPES.forEach(function (typeDef) {
-      var itemsOfType = items.filter(function (it) { return it.type === typeDef.key; });
+    sectionOrder.forEach(function (key) {
+      var typeDef = CONTENT_TYPES.find(function (t) { return t.key === key; });
+      if (!typeDef) return;
+      var itemsOfType = items.filter(function (it) { return it.type === key; });
       if (!itemsOfType.length) return;
       itemsHtml += '<div class="section-divider profile-divider"><span>' + typeDef.label + '</span></div>';
       itemsOfType.forEach(function (item) { itemsHtml += profileItemHtml(item); });
@@ -1800,6 +1853,8 @@
           '<div class="share-banner" style="background:' + accent + ';">' +
             (data.cover ? '<img src="' + data.cover + '" class="share-banner-img" alt="" />' : "") +
             '<div class="share-banner-overlay"></div>' +
+          '</div>' +
+          '<div class="share-avatar-wrap">' +
             (data.avatar
               ? '<img src="' + data.avatar + '" class="share-avatar" alt="" />'
               : '<div class="share-avatar share-avatar-placeholder">🙂</div>') +
@@ -1832,6 +1887,7 @@
           '<h1 class="profile-name">' + escapeHtml(data.displayName || username) + '</h1>' +
           '<p class="profile-username">@' + escapeHtml(username) + '</p>' +
           (data.bio ? '<p class="profile-bio">' + escapeHtml(data.bio) + '</p>' : "") +
+          '<div class="profile-bio-rule"></div>' +
           itemsHtml +
         '</div>' +
         colorPickerHtml +
@@ -1956,7 +2012,7 @@
                 ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
               }
               ctx.restore();
-              ctx.strokeStyle = bodyBg;
+              ctx.strokeStyle = "#c9c9d1";
               ctx.lineWidth = 6;
               ctx.beginPath();
               ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -1975,11 +2031,9 @@
               if (ctx.roundRect) ctx.roundRect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize, 16);
               else ctx.rect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize);
               ctx.fill();
-              if (isDark) {
-                ctx.strokeStyle = "rgba(255,255,255,0.15)";
-                ctx.lineWidth = 1;
-                ctx.stroke();
-              }
+              ctx.strokeStyle = "#c9c9d1";
+              ctx.lineWidth = 1;
+              ctx.stroke();
               if (qrImg) {
                 var pad = 14;
                 ctx.drawImage(qrImg, qrBoxX + pad, qrBoxY + pad, qrBoxSize - pad * 2, qrBoxSize - pad * 2);
