@@ -646,6 +646,15 @@
           app2.style.transition = "opacity 220ms ease, transform 220ms ease";
           app2.style.opacity = "1";
           app2.style.transform = "translateY(0)";
+          // translateY(0) is still a set "transform" as far as CSS is concerned,
+          // which makes any position:fixed popup inside #app anchor to this
+          // div instead of the real viewport — clear it out once the
+          // animation is done so fixed modals behave correctly again.
+          setTimeout(function () {
+            app2.style.transition = "";
+            app2.style.transform = "";
+            app2.style.opacity = "";
+          }, 230);
         });
       });
     }, 140);
@@ -973,23 +982,46 @@
     adminPanelSection = null;
     render();
   }
+  function goldBadgeSvg(size) {
+    size = size || 16;
+    return (
+      '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" style="vertical-align:-3px;display:inline-block;">' +
+        '<defs><linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">' +
+          '<stop offset="0%" stop-color="#fbe08a"/><stop offset="100%" stop-color="#d4a017"/>' +
+        '</linearGradient></defs>' +
+        '<path fill="url(#goldGrad)" d="M12 1.5l2.4 2.1 3.1-.7.9 3 2.9 1.3-.9 3.1 1.9 2.7-1.9 2.7.9 3.1-2.9 1.3-.9 3-3.1-.7L12 22.5l-2.4-2.1-3.1.7-.9-3-2.9-1.3.9-3.1L1.7 12l1.9-2.7-.9-3.1 2.9-1.3.9-3 3.1.7L12 1.5z"/>' +
+        '<path fill="#fff" d="M9.8 12.6l-1.9-1.9-1.3 1.3 3.2 3.2 6-6-1.3-1.3z"/>' +
+      '</svg>'
+    );
+  }
+
   function toggleBan(username, banned) {
     db.collection("bios").doc(username).update({ banned: !banned }).then(function () {
       openAdminSection("ban");
     }).catch(function (err) { console.error(err); });
   }
 
-  function adminAccountRowHtml(data, withBanBtn) {
+  function toggleVerified(username, verified) {
+    db.collection("bios").doc(username).update({ verified: !verified }).then(function () {
+      openAdminSection("verify");
+    }).catch(function (err) { console.error(err); });
+  }
+
+  function adminAccountRowHtml(data, actionType) {
     var created = data.createdAt && data.createdAt.toDate ? data.createdAt.toDate().toLocaleDateString() : "";
+    var actionBtn = "";
+    if (actionType === "ban") {
+      actionBtn = '<button type="button" class="pill pill-ghost small-pill" data-ban="' + escapeHtml(data.username) + '" data-banned="' + (data.banned ? "1" : "0") + '">' + (data.banned ? "Unban" : "Ban") + '</button>';
+    } else if (actionType === "verify") {
+      actionBtn = '<button type="button" class="pill pill-ghost small-pill" data-verify="' + escapeHtml(data.username) + '" data-verified="' + (data.verified ? "1" : "0") + '">' + (data.verified ? "Unverify" : "Verify") + '</button>';
+    }
     return (
       '<div class="admin-account-row">' +
         '<div class="admin-account-info">' +
-          '<span class="admin-account-name">' + escapeHtml(data.displayName || data.username) + '</span>' +
+          '<span class="admin-account-name">' + escapeHtml(data.displayName || data.username) + (data.verified ? " " + goldBadgeSvg(14) : "") + '</span>' +
           '<span class="admin-account-meta">@' + escapeHtml(data.username) + (created ? " · " + created : "") + (data.banned ? " · BANNED" : "") + '</span>' +
         '</div>' +
-        (withBanBtn
-          ? '<button type="button" class="pill pill-ghost small-pill" data-ban="' + escapeHtml(data.username) + '" data-banned="' + (data.banned ? "1" : "0") + '">' + (data.banned ? "Unban" : "Ban") + '</button>'
-          : "") +
+        actionBtn +
       '</div>'
     );
   }
@@ -1000,15 +1032,16 @@
     if (!adminPanelOpen) return fab;
 
     var body;
-    if (adminPanelSection === "ban" || adminPanelSection === "new") {
-      var title = adminPanelSection === "ban" ? "Ban management" : "Newly created accounts";
+    if (adminPanelSection === "ban" || adminPanelSection === "new" || adminPanelSection === "verify") {
+      var title = adminPanelSection === "ban" ? "Ban management" : adminPanelSection === "verify" ? "Verification Gold" : "Newly created accounts";
+      var actionType = adminPanelSection === "ban" ? "ban" : adminPanelSection === "verify" ? "verify" : null;
       var list;
       if (adminPanelData === null) {
         list = '<p class="admin-note">Loading…</p>';
       } else if (!adminPanelData.length) {
         list = '<p class="admin-note">No accounts yet.</p>';
       } else {
-        list = adminPanelData.map(function (d) { return adminAccountRowHtml(d, adminPanelSection === "ban"); }).join("");
+        list = adminPanelData.map(function (d) { return adminAccountRowHtml(d, actionType); }).join("");
       }
       body =
         '<button type="button" class="pill pill-ghost" id="admin-back">← Back</button>' +
@@ -1019,6 +1052,7 @@
         '<h3>Admin panel</h3>' +
         '<button type="button" class="admin-option" id="admin-open-ban">🚫 Ban management</button>' +
         '<button type="button" class="admin-option" id="admin-open-new">🆕 New accounts</button>' +
+        '<button type="button" class="admin-option" id="admin-open-verify">' + goldBadgeSvg(16) + ' Verification Gold</button>' +
         '<button type="button" class="admin-option" disabled>🎟️ Redeem code <span class="admin-soon">next update</span></button>';
     }
 
@@ -1045,6 +1079,8 @@
     if (banBtn) banBtn.addEventListener("click", function () { openAdminSection("ban"); });
     var newBtn = document.getElementById("admin-open-new");
     if (newBtn) newBtn.addEventListener("click", function () { openAdminSection("new"); });
+    var verifyBtn = document.getElementById("admin-open-verify");
+    if (verifyBtn) verifyBtn.addEventListener("click", function () { openAdminSection("verify"); });
     var backBtn = document.getElementById("admin-back");
     if (backBtn) backBtn.addEventListener("click", function () { openAdminSection(null); });
     var overlay = document.getElementById("admin-overlay");
@@ -1052,6 +1088,8 @@
       overlay.addEventListener("click", function (e) {
         var banToggle = e.target.closest("[data-ban]");
         if (banToggle) toggleBan(banToggle.getAttribute("data-ban"), banToggle.getAttribute("data-banned") === "1");
+        var verifyToggle = e.target.closest("[data-verify]");
+        if (verifyToggle) toggleVerified(verifyToggle.getAttribute("data-verify"), verifyToggle.getAttribute("data-verified") === "1");
       });
     }
   }
@@ -1884,7 +1922,7 @@
         '<div class="profile-cover" style="' + coverStyle + '"></div>' +
         '<div class="create-body profile-body">' +
           '<div class="profile-avatar-row">' + avatarHtml + '</div>' +
-          '<h1 class="profile-name">' + escapeHtml(data.displayName || username) + '</h1>' +
+          '<h1 class="profile-name">' + escapeHtml(data.displayName || username) + (data.verified ? " " + goldBadgeSvg(20) : "") + '</h1>' +
           '<p class="profile-username">@' + escapeHtml(username) + '</p>' +
           (data.bio ? '<p class="profile-bio">' + escapeHtml(data.bio) + '</p>' : "") +
           '<div class="profile-bio-rule"></div>' +
