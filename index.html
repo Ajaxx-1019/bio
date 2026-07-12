@@ -446,6 +446,13 @@
   .admin-account-name { font-size: 13px; font-weight: 700; }
   .admin-account-meta { font-size: 11px; color: var(--text-dim); }
   .small-pill { padding: 6px 12px; font-size: 11px; flex-shrink: 0; }
+  .verify-badge-picker { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .verify-type-btn { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+  .verify-type-btn.active { border-color: var(--text); }
+  .verify-clear-btn {
+    width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border);
+    background: transparent; color: var(--text-dim); font-size: 11px; cursor: pointer; line-height: 1;
+  }
 
   .crop-modal {
     position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); z-index: 600;
@@ -982,14 +989,27 @@
     adminPanelSection = null;
     render();
   }
-  function goldBadgeSvg(size) {
+  var VERIFY_TYPES = {
+    trusted: { label: "Trusted", color1: "#7dc4fa", color2: "#1e88e5" },
+    owner: { label: "Owner", color1: "#fbe08a", color2: "#d4a017" },
+    moderator: { label: "Moderator", color1: "#f79797", color2: "#d32f2f" }
+  };
+
+  // Clean, mathematically even 8-point seal (previous version was hand-eyeballed
+  // and came out jagged/uneven) — same outline reused for every badge color.
+  var BADGE_PATH = "M12,1.5 L15.06,4.61 L19.42,4.58 L19.39,8.94 L22.5,12 L19.39,15.06 L19.42,19.42 L15.06,19.39 L12,22.5 L8.94,19.39 L4.58,19.42 L4.61,15.06 L1.5,12 L4.61,8.94 L4.58,4.58 L8.94,4.61 Z";
+
+  function verifiedBadgeSvg(type, size) {
+    var meta = VERIFY_TYPES[type];
+    if (!meta) return "";
     size = size || 16;
+    var gradId = "badgeGrad" + type + Math.random().toString(36).slice(2, 8);
     return (
       '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" style="vertical-align:-3px;display:inline-block;">' +
-        '<defs><linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">' +
-          '<stop offset="0%" stop-color="#fbe08a"/><stop offset="100%" stop-color="#d4a017"/>' +
+        '<defs><linearGradient id="' + gradId + '" x1="0" y1="0" x2="1" y2="1">' +
+          '<stop offset="0%" stop-color="' + meta.color1 + '"/><stop offset="100%" stop-color="' + meta.color2 + '"/>' +
         '</linearGradient></defs>' +
-        '<path fill="url(#goldGrad)" d="M12 1.5l2.4 2.1 3.1-.7.9 3 2.9 1.3-.9 3.1 1.9 2.7-1.9 2.7.9 3.1-2.9 1.3-.9 3-3.1-.7L12 22.5l-2.4-2.1-3.1.7-.9-3-2.9-1.3.9-3.1L1.7 12l1.9-2.7-.9-3.1 2.9-1.3.9-3 3.1.7L12 1.5z"/>' +
+        '<path fill="url(#' + gradId + ')" d="' + BADGE_PATH + '"/>' +
         '<path fill="#fff" d="M9.8 12.6l-1.9-1.9-1.3 1.3 3.2 3.2 6-6-1.3-1.3z"/>' +
       '</svg>'
     );
@@ -1001,8 +1021,8 @@
     }).catch(function (err) { console.error(err); });
   }
 
-  function toggleVerified(username, verified) {
-    db.collection("bios").doc(username).update({ verified: !verified }).then(function () {
+  function setVerification(username, type) {
+    db.collection("bios").doc(username).update({ verified: type || null }).then(function () {
       openAdminSection("verify");
     }).catch(function (err) { console.error(err); });
   }
@@ -1013,12 +1033,20 @@
     if (actionType === "ban") {
       actionBtn = '<button type="button" class="pill pill-ghost small-pill" data-ban="' + escapeHtml(data.username) + '" data-banned="' + (data.banned ? "1" : "0") + '">' + (data.banned ? "Unban" : "Ban") + '</button>';
     } else if (actionType === "verify") {
-      actionBtn = '<button type="button" class="pill pill-ghost small-pill" data-verify="' + escapeHtml(data.username) + '" data-verified="' + (data.verified ? "1" : "0") + '">' + (data.verified ? "Unverify" : "Verify") + '</button>';
+      actionBtn =
+        '<div class="verify-badge-picker">' +
+          Object.keys(VERIFY_TYPES).map(function (key) {
+            var meta = VERIFY_TYPES[key];
+            var isActive = data.verified === key;
+            return '<button type="button" class="verify-type-btn' + (isActive ? " active" : "") + '" data-verify-type="' + escapeHtml(data.username) + ':' + key + '" style="background:linear-gradient(135deg,' + meta.color1 + ',' + meta.color2 + ')" title="' + meta.label + '"></button>';
+          }).join("") +
+          (data.verified ? '<button type="button" class="verify-clear-btn" data-verify-clear="' + escapeHtml(data.username) + '" aria-label="Remove verification">×</button>' : "") +
+        '</div>';
     }
     return (
       '<div class="admin-account-row">' +
         '<div class="admin-account-info">' +
-          '<span class="admin-account-name">' + escapeHtml(data.displayName || data.username) + (data.verified ? " " + goldBadgeSvg(14) : "") + '</span>' +
+          '<span class="admin-account-name">' + escapeHtml(data.displayName || data.username) + (data.verified ? " " + verifiedBadgeSvg(data.verified, 14) : "") + '</span>' +
           '<span class="admin-account-meta">@' + escapeHtml(data.username) + (created ? " · " + created : "") + (data.banned ? " · BANNED" : "") + '</span>' +
         '</div>' +
         actionBtn +
@@ -1052,7 +1080,7 @@
         '<h3>Admin panel</h3>' +
         '<button type="button" class="admin-option" id="admin-open-ban">🚫 Ban management</button>' +
         '<button type="button" class="admin-option" id="admin-open-new">🆕 New accounts</button>' +
-        '<button type="button" class="admin-option" id="admin-open-verify">' + goldBadgeSvg(16) + ' Verification Gold</button>' +
+        '<button type="button" class="admin-option" id="admin-open-verify">' + verifiedBadgeSvg("owner", 16) + ' Verification</button>' +
         '<button type="button" class="admin-option" disabled>🎟️ Redeem code <span class="admin-soon">next update</span></button>';
     }
 
@@ -1088,8 +1116,13 @@
       overlay.addEventListener("click", function (e) {
         var banToggle = e.target.closest("[data-ban]");
         if (banToggle) toggleBan(banToggle.getAttribute("data-ban"), banToggle.getAttribute("data-banned") === "1");
-        var verifyToggle = e.target.closest("[data-verify]");
-        if (verifyToggle) toggleVerified(verifyToggle.getAttribute("data-verify"), verifyToggle.getAttribute("data-verified") === "1");
+        var verifyTypeBtn = e.target.closest("[data-verify-type]");
+        if (verifyTypeBtn) {
+          var vParts = verifyTypeBtn.getAttribute("data-verify-type").split(":");
+          setVerification(vParts[0], vParts[1]);
+        }
+        var verifyClearBtn = e.target.closest("[data-verify-clear]");
+        if (verifyClearBtn) setVerification(verifyClearBtn.getAttribute("data-verify-clear"), null);
       });
     }
   }
@@ -1922,7 +1955,7 @@
         '<div class="profile-cover" style="' + coverStyle + '"></div>' +
         '<div class="create-body profile-body">' +
           '<div class="profile-avatar-row">' + avatarHtml + '</div>' +
-          '<h1 class="profile-name">' + escapeHtml(data.displayName || username) + (data.verified ? " " + goldBadgeSvg(20) : "") + '</h1>' +
+          '<h1 class="profile-name">' + escapeHtml(data.displayName || username) + (data.verified ? " " + verifiedBadgeSvg(data.verified, 20) : "") + '</h1>' +
           '<p class="profile-username">@' + escapeHtml(username) + '</p>' +
           (data.bio ? '<p class="profile-bio">' + escapeHtml(data.bio) + '</p>' : "") +
           '<div class="profile-bio-rule"></div>' +
