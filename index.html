@@ -1063,7 +1063,7 @@
 
   function adminPanelHtml() {
     if (!isAdmin()) return "";
-    var fab = '<button type="button" class="admin-fab" id="admin-fab" aria-label="Admin panel">🗂️</button>';
+    var fab = '<button type="button" class="admin-fab" id="admin-fab" aria-label="Admin panel">🗃️</button>';
     if (!adminPanelOpen) return fab;
 
     var body;
@@ -1825,7 +1825,7 @@
             (myBioUsername
               ? '<a href="/@' + encodeURIComponent(myBioUsername) + '" class="pill pill-solid" data-link>My Bio!</a>'
               : '<a href="/create" class="pill pill-solid" data-link>Get your bio started</a>') +
-            '<button type="button" class="pill pill-ghost" disabled title="Coming soon">🛂 Redeem / Premium — Under Development</button>' +
+            '<button type="button" class="pill pill-ghost" disabled title="Coming soon">Redeem / Premium — Under Development</button>' +
             '<a href="/search" class="pill pill-outline" data-link>See other bios</a>' +
           '</div>' +
         '</main>' +
