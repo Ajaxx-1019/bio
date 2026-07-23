@@ -1204,6 +1204,7 @@
   }
 
   var lastAddedItemId = null;
+  var lastMovedId = null; // only this item/section gets the slide animation — everything else just snaps
 
   // Real live follower counts / auto profile-picture fetching from Instagram,
   // TikTok, X, etc. isn't something this can do without paid third-party APIs
@@ -1286,6 +1287,7 @@
     var tmp = draft.items[realA];
     draft.items[realA] = draft.items[realB];
     draft.items[realB] = tmp;
+    lastMovedId = id;
     renderItemsList();
   }
 
@@ -1297,6 +1299,7 @@
     var firstSameType = draft.items.findIndex(function (it) { return it.type === item.type; });
     if (firstSameType === -1) firstSameType = draft.items.length;
     draft.items.splice(firstSameType, 0, item);
+    lastMovedId = id;
     renderItemsList();
   }
 
@@ -1316,6 +1319,7 @@
     var tmp = draft.sectionOrder[realA];
     draft.sectionOrder[realA] = draft.sectionOrder[realB];
     draft.sectionOrder[realB] = tmp;
+    lastMovedId = "section:" + key;
     renderItemsList();
   }
 
@@ -1337,18 +1341,40 @@
       alert("Please choose an mp3, wav, ogg, or m4a file.");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      alert("That song is " + (file.size / (1024 * 1024)).toFixed(1) + "MB — please keep it under 5MB.");
+    if (file.size > 15 * 1024 * 1024) {
+      alert("That song is " + (file.size / (1024 * 1024)).toFixed(1) + "MB — please keep it under 15MB.");
       return;
     }
-    var item = draft.items.find(function (it) { return it.id === id; });
-    if (!item) return;
-    item.url = "uploading";
-    renderItemsList();
-    uploadToCloudinary(file, function (url) {
-      item.url = url || "";
+
+    function proceedWithUpload() {
+      var item = draft.items.find(function (it) { return it.id === id; });
+      if (!item) return;
+      item.url = "uploading";
       renderItemsList();
-    });
+      uploadToCloudinary(file, function (url) {
+        item.url = url || "";
+        renderItemsList();
+      });
+    }
+
+    // Check the actual length, not just the file size — a 15MB file could
+    // still run long at a low bitrate.
+    var objectUrl = URL.createObjectURL(file);
+    var probe = new Audio();
+    probe.preload = "metadata";
+    probe.onloadedmetadata = function () {
+      URL.revokeObjectURL(objectUrl);
+      if (probe.duration && probe.duration > 5 * 60) {
+        alert("That song is " + Math.round(probe.duration / 60) + " min long — please keep it under 5 minutes.");
+        return;
+      }
+      proceedWithUpload();
+    };
+    probe.onerror = function () {
+      URL.revokeObjectURL(objectUrl);
+      proceedWithUpload(); // couldn't read the duration — don't block a valid file over that
+    };
+    probe.src = objectUrl;
   }
 
   // ---------- photo crop modal (shared by cover / avatar / item icons) ----------
@@ -1599,10 +1625,20 @@
       ? '<button type="button" class="icon-btn small" data-copy="' + item.id + '" aria-label="Copy link">⧉</button>'
       : "";
 
+    var LABEL_PLACEHOLDERS = {
+      social: "Account name",
+      link: "Link title",
+      song: "Song name",
+      film: "Movie name",
+      game: "Game name",
+      payment: "Payment name"
+    };
+    var labelPlaceholder = LABEL_PLACEHOLDERS[item.type] || "Label";
+
     var urlPlaceholder = "https://...";
     if (item.type === "social" && item.icon && item.icon.indexOf("preset:") === 0) {
       var platformMeta = SOCIAL_PLATFORMS[item.icon.slice(7)];
-      if (platformMeta && platformMeta.urlBase) urlPlaceholder = "username (e.g. edd_00z)";
+      if (platformMeta && platformMeta.urlBase) urlPlaceholder = platformMeta.name + " username";
     }
 
     return (
@@ -1612,7 +1648,7 @@
           '<input type="file" accept="image/png,image/jpeg,image/webp" data-icon-upload="' + item.id + '" hidden />' +
         '</label>' +
         '<div class="item-fields">' +
-          '<input type="text" placeholder="Label (e.g. Instagram)" value="' + escapeHtml(item.label) + '" data-field="label" data-item-id="' + item.id + '" />' +
+          '<input type="text" placeholder="' + labelPlaceholder + '" value="' + escapeHtml(item.label) + '" data-field="label" data-item-id="' + item.id + '" />' +
           (item.type === "song" ? "" : '<input type="text" placeholder="' + urlPlaceholder + '" value="' + escapeHtml(item.url) + '" data-field="url" data-item-id="' + item.id + '" />') +
           extra +
         '</div>' +
@@ -1670,23 +1706,26 @@
 
     Array.prototype.forEach.call(container.querySelectorAll("[data-item-id], [data-section-key]"), function (el) {
       var id = el.hasAttribute("data-item-id") ? el.getAttribute("data-item-id") : "section:" + el.getAttribute("data-section-key");
-      var first = firstRects[id];
-      if (first) {
-        var last = el.getBoundingClientRect();
-        var deltaY = first.top - last.top;
-        if (Math.abs(deltaY) > 1) {
-          el.style.transition = "none";
-          el.style.transform = "translateY(" + deltaY + "px)";
-          requestAnimationFrame(function () {
-            el.style.transition = "transform 220ms ease";
-            el.style.transform = "translateY(0)";
-          });
+      if (id === lastMovedId) {
+        var first = firstRects[id];
+        if (first) {
+          var last = el.getBoundingClientRect();
+          var deltaY = first.top - last.top;
+          if (Math.abs(deltaY) > 1) {
+            el.style.transition = "none";
+            el.style.transform = "translateY(" + deltaY + "px)";
+            requestAnimationFrame(function () {
+              el.style.transition = "transform 220ms ease";
+              el.style.transform = "translateY(0)";
+            });
+          }
         }
       } else if (id === lastAddedItemId) {
         el.classList.add("pop-in");
       }
     });
     lastAddedItemId = null;
+    lastMovedId = null;
   }
 
   function attachItemsListEvents() {
